@@ -42,11 +42,9 @@ TORCH_HUB = './models/'
 torch.set_grad_enabled(False)
 torch.hub.set_dir(TORCH_HUB)
 
-print('loading caltech101 dataset ...')
 DATA_DIR = './data/caltech101'
 DATASET = torchvision.datasets.Caltech101(DATA_DIR, download=False)
 
-print('loading resnet models ...')
 MODEL_NAME = 'ResNet50_Weights.DEFAULT'
 RESNET_MODEL = torchvision.models.resnet50(weights=MODEL_NAME).eval()
 
@@ -100,12 +98,10 @@ svd = SVD()
 K = 512
 
 if os.path.exists('artifacts/resnet50_avgpool_features.pkl'):
-  print('loading features from artifacts ...')
   features = torch.load('artifacts/resnet50_avgpool_features.pkl')
   labels = torch.load('artifacts/labels.pkl')
   image_ids = torch.load('artifacts/image_ids.pkl')
 else:
-  print('extracting features ...')
   features = []
   labels = []
   image_ids = []
@@ -127,11 +123,9 @@ else:
 IMG_LATENT_FEAT_MAP_PATH = 'artifacts/img_latent_feat_map.pkl'
 IMG_LATENT_FEAT_COMPONENTS_PATH = 'artifacts/img_latent_feat_components.pkl'
 if os.path.exists(IMG_LATENT_FEAT_MAP_PATH):
-  print('loading image latent features from artifacts ...')
   latent_features = torch.load(IMG_LATENT_FEAT_MAP_PATH)
   svd.components_ = torch.load(IMG_LATENT_FEAT_COMPONENTS_PATH)
 else:
-  print('computing image latent features ...')
   latent_features = svd.fit_transform(features, K)
   torch.save(latent_features, IMG_LATENT_FEAT_MAP_PATH)
   torch.save(svd.components_, IMG_LATENT_FEAT_COMPONENTS_PATH)
@@ -139,10 +133,8 @@ else:
 
 LABEL_LATENT_FEAT_MAP_PATH = 'artifacts/label_latent_feat_map.pkl'
 if os.path.exists(LABEL_LATENT_FEAT_MAP_PATH):
-  print('loading label latent features from artifacts ...')
   label_latent_feat_map = torch.load(LABEL_LATENT_FEAT_MAP_PATH)
 else:
-  print('computing label latent features ...')
   label_latent_feat_map = torch.empty((len(set(DATASET.y)), K))
 
   for label in tqdm(set(labels), desc='Computing Label Latent Features', leave=False):
@@ -152,13 +144,11 @@ else:
   torch.save(label_latent_feat_map, LABEL_LATENT_FEAT_MAP_PATH)
 
 
-print('predicting labels ...')
 preds = []
 
 ODD_IMG_LATENT_FEAT_PATH = 'artifacts/odd_img_latent_feat.pkl'
 ODD_IMG_LABELS_PATH = 'artifacts/odd_image_labels.pkl'
 if os.path.exists(ODD_IMG_LATENT_FEAT_PATH):
-  print('loading odd image latent features from artifacts ...')
   odd_image_latent_features = torch.load(ODD_IMG_LATENT_FEAT_PATH)
   trues = torch.load(ODD_IMG_LABELS_PATH)
 else:
@@ -187,7 +177,6 @@ for latent_feature in tqdm(odd_image_latent_features, desc='Predicting Labels', 
   pred = torch.argmax(cosine_sim)
   preds.append(pred)
 
-print('calculating metrics ...')
 preds = torch.tensor(preds)
 
 # Calculating per-label metrics
@@ -212,7 +201,6 @@ fp = torch.sum(preds != trues)
 precision = tp / (tp + fp)
 accuracy = tp / len(preds)
 
-print('saving metrics in csv ...')
 
 with open('outputs/task1.csv', 'w') as f:
   f.write('label,precision,recall,f1_score\n')
@@ -221,7 +209,12 @@ with open('outputs/task1.csv', 'w') as f:
 
   f.write(f'\noverall accuracy,{accuracy}\n')
 
-# read csv and pretty print
-import pandas as pd
-df = pd.read_csv('outputs/task1.csv')
-print(df)
+# pretty print metrics
+print('per-label metrics:')
+print(f'{"label".rjust(6)}{"precision".rjust(12)}{"recall".rjust(12)}{"f1_score".rjust(12)}')
+for label in sorted(per_label_metrics.keys()):
+  metrics = per_label_metrics[label]
+  print(f'{label:6d}{metrics["precision"]:12.3f}{metrics["recall"]:12.3f}{metrics["f1_score"]:12.3f}')
+
+print()
+print(f'overall accuracy: {accuracy:0.3f}')
