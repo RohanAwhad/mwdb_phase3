@@ -2,3 +2,5 @@ models
 data
 artifacts
 outputs
+*.swp
+__pycache__
