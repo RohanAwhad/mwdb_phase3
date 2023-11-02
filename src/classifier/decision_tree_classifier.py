@@ -1,4 +1,5 @@
-import numpy as np
+import torch
+from tqdm import tqdm
 
 class DecisionTreeNode:
     def __init__(self, gini, num_samples, num_samples_per_class, predicted_class):
@@ -12,7 +13,7 @@ class DecisionTreeNode:
         self.right = None
 
 class DecisionTreeClassifier:
-    def __init__(self, max_depth=None):
+    def __init__(self, max_depth):
         self.max_depth = max_depth
 
     def fit(self, X, y):
@@ -35,15 +36,15 @@ class DecisionTreeClassifier:
         float: The Gini impurity of the set of labels.
         """
         m = len(y)
-        return 1.0 - sum((np.sum(y == c) / m) ** 2 for c in np.unique(y))  # sum of squares of probabilities of each class
+        return 1.0 - sum((torch.sum(y == c).item() / m) ** 2 for c in torch.unique(y))  # sum of squares of probabilities of each class
 
     def _best_split(self, X, y):
         """
         Find the best split for a decision tree classifier.
 
         Parameters:
-        X (numpy.ndarray): The input data.
-        y (numpy.ndarray): The target labels.
+        X (torch.Tensor): The input data.
+        y (torch.Tensor): The target labels.
 
         Returns:
         Tuple[int, float]: The index of the best feature and the threshold value for the best split.
@@ -53,29 +54,128 @@ class DecisionTreeClassifier:
             return None, None
 
         # Unique classes and their counts
-        class_counts = {c: np.sum(y == c) for c in np.unique(y)}
-        best_gini = 1.0 - sum((n / m) ** 2 for n in class_counts.values())
+        class_counts = torch.zeros(self.n_classes_)
+        for c in torch.unique(y): class_counts[c] = torch.sum(y == c).item()
+
+        best_gini = 1.0 - sum((n / m) ** 2 for n in class_counts)
         best_idx, best_thr = None, None
 
         # Loop through all features
-        for idx in range(self.n_features_):
+        for idx in tqdm(range(self.n_features_), desc='Finding Best Split', leave=False):
             thresholds, classes = zip(*sorted(zip(X[:, idx], y)))
 
+            '''
+            _tmp_gini_left, _tmp_gini_right = [], []
+            _tmp_num_left, _tmp_num_right = [], []
             # Naive algorithm: Iterate through all thresholds and count how many samples would be
-            num_left = {c: 0 for c in class_counts}
-            num_right = class_counts.copy()
+            num_left = torch.zeros(self.n_classes_)
+            num_right = class_counts.clone()
             for i in range(1, m):
-                c = classes[i - 1]
+                c = classes[i - 1].item()
                 num_left[c] += 1
                 num_right[c] -= 1
 
-                # gini impurity calculation
-                gini_left = 1.0 - sum((num_left[cl] / i) ** 2 for cl in num_left)
-                gini_right = 1.0 - sum((num_right[cr] / (m - i)) ** 2 for cr in num_right)
-                gini = (i * gini_left + (m - i) * gini_right) / m
+                _tmp_num_left.append(num_left.clone())
+                _tmp_num_right.append(num_right.clone())
 
                 if thresholds[i] == thresholds[i - 1]:
                     continue
+
+                # gini impurity calculation
+                gini_left = 1.0 - torch.sum((num_left / i) ** 2)
+                gini_right = 1.0 - torch.sum((num_right / (m - i)) ** 2)
+                _tmp_gini_left.append(gini_left)
+                _tmp_gini_right.append(gini_right)
+                gini = (i * gini_left + (m - i) * gini_right) / m
+
+                if gini < best_gini:
+                    best_gini = gini
+                    best_idx = idx
+                    best_thr = (thresholds[i] + thresholds[i - 1]) / 2
+            '''
+
+            num_left = torch.zeros(m, self.n_classes_)
+            num_right = torch.stack([class_counts.clone() for _ in range(m)])  # m-1 copies of class_counts
+            for i in range(1, m):
+                num_left[i] = num_left[i-1].clone()
+                num_right[i] = num_right[i-1].clone()
+
+                c = classes[i - 1].item()
+                num_left[i, c] += 1
+                num_right[i, c] -= 1
+
+
+            # gini impurity calculation
+            num_left = num_left[1:]
+            num_right = num_right[:-1]
+            gini_left = 1.0 - torch.sum((num_left / torch.arange(1, m).unsqueeze(1)) ** 2, dim=1)
+            gini_right = 1.0 - torch.sum((num_right / (m - torch.arange(1, m)).unsqueeze(1)) ** 2, dim=1)
+            gini = (torch.arange(1, m) * gini_left + (m - torch.arange(1, m)) * gini_right) / m
+
+            # _tmp_gini_left = torch.stack(_tmp_gini_left)
+            # _tmp_gini_right = torch.stack(_tmp_gini_right)
+            # _tmp_num_left = torch.stack(_tmp_num_left)
+            # _tmp_num_right = torch.stack(_tmp_num_right)
+
+
+            # print(f'naive num_left: {_tmp_num_left}, optimized_num_left: {num_left}')
+            # print(f'naive num_right: {_tmp_num_right}, optimized_num_right: {num_right}')
+            # print(f'naive gini_left: {_tmp_gini_left}, optimized_gini_left: {gini_left}')
+            # print(f'naive gini_right: {_tmp_gini_right}, optimized_gini_right: {gini_right}')
+
+            '''
+            # gini_left = 1.0 - torch.sum((num_left / torch.arange(1, m+1).unsqueeze(1)) ** 2, dim=1)
+            # gini_right = 1.0 - torch.sum((num_right / (m - torch.arange(1, m+1)).unsqueeze(1)) ** 2, dim=1)
+            # gini = (torch.arange(1, m+1) * gini_left + (m - torch.arange(1, m+1)) * gini_right) / m
+
+            '''
+            # find the best split
+            if torch.min(gini) < best_gini:
+                best_idx = idx
+                i = torch.argmin(gini)
+                best_thr = (thresholds[i] + thresholds[i - 1]) / 2
+
+        return best_idx, best_thr
+    '''
+
+    def _best_split(self, X, y):
+        m = X.shape[0]  # Number of samples
+        if m <= 1:
+            return None, None
+
+        # Unique classes and their counts
+        class_counts = {c.item(): torch.sum(y == c).item() for c in torch.unique(y)}
+        best_gini = 1.0 - sum((n / m) ** 2 for n in class_counts.values())
+        best_idx, best_thr = None, None
+        # Initialize sums of squares of class counts
+        sum_squares_left = 0
+        sum_squares_right = sum(n ** 2 for n in class_counts.values())
+
+        for idx in tqdm(range(self.n_features_), desc='Finding Best Split', leave=False):
+            thresholds, classes = zip(*sorted(zip(X[:, idx], y)))
+            
+            num_left = {c: 0 for c in class_counts}
+            num_right = class_counts.copy()
+
+            for i in range(1, m):
+                c = classes[i - 1].item()
+                
+                # Move one count from right to left
+                num_left[c] += 1
+                num_right[c] -= 1
+
+                # Update the sums of squares incrementally
+                sum_squares_left += 2 * num_left[c] - 1  # (n+1)^2 - n^2 = 2n + 1
+                sum_squares_right -= 2 * num_right[c] + 1  # (n-1)^2 - n^2 = -2n + 1
+
+                # Calculate the Gini impurities incrementally
+                gini_left = 1.0 - sum_squares_left / i**2
+                gini_right = 1.0 - sum_squares_right / (m - i)**2
+
+                if thresholds[i] == thresholds[i - 1]:
+                    continue
+
+                gini = (i * gini_left + (m - i) * gini_right) / m
 
                 if gini < best_gini:
                     best_gini = gini
@@ -84,21 +184,29 @@ class DecisionTreeClassifier:
 
         return best_idx, best_thr
 
-    def _grow_tree(self, X, y, depth=0):
+    '''
+
+    def _grow_tree(self, X, y, depth=0, pbar=None):
         """
         Recursively grows a decision tree from the given training data.
 
         Args:
-            X (numpy.ndarray): The training data features.
-            y (numpy.ndarray): The training data labels.
+            X (torch.Tensor): The training data features.
+            y (torch.Tensor): The training data labels.
             depth (int): The current depth of the tree.
 
         Returns:
             DecisionTreeNode: The root node of the decision tree.
         """
+        if pbar is None:
+            pbar = tqdm(total=self.max_depth, desc='Growing Decision Tree', leave=False)
+        else:
+            # update pbar to show how much depth is left
+            pbar.n = self.max_depth - depth
+            pbar.refresh()
         # Population for each class in current node. The predicted class is the one with largest population.
-        num_samples_per_class = [np.sum(y == i) for i in range(self.n_classes_)]
-        predicted_class = np.argmax(num_samples_per_class)
+        num_samples_per_class = [torch.sum(y == i).item() for i in range(self.n_classes_)]
+        predicted_class = torch.argmax(torch.tensor(num_samples_per_class)).item()
         node = DecisionTreeNode(
             gini=self._gini(y),
             num_samples=len(y),
@@ -130,7 +238,7 @@ class DecisionTreeClassifier:
         Predict the class for a given input using the decision tree.
 
         Parameters:
-        inputs (numpy.ndarray): The input data.
+        inputs (torch.Tensor): The input data.
 
         Returns:
         int: The predicted class.
@@ -172,8 +280,6 @@ if __name__ == '__main__':
 
     print('Custom Decision Tree Classifier:')
     clf = DecisionTreeClassifier(max_depth=3)
-    clf.fit(X_train, y_train)
-    my_predictions = clf.predict(X_test)
+    clf.fit(torch.tensor(X_train), torch.tensor(y_train))
+    my_predictions = clf.predict(torch.tensor(X_test))
     print(accuracy_score(y_test, my_predictions))
-
-    print(list(zip(predictions, my_predictions)))
