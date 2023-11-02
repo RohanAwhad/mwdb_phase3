@@ -60,31 +60,64 @@ class DecisionTreeClassifier:
         best_idx, best_thr = None, None
 
         # Loop through all features
+        m_range = torch.arange(1, m)
+        unsq_m_range = m_range.reshape(-1, 1)
+        gini_right_m_range = m - unsq_m_range
+        gini_m_range = m - m_range
+        sorted_idx = torch.argsort(X, axis=0)
+        all_num_left = torch.zeros((self.n_features_, m, self.n_classes_))
+        # _tmp_all_gini_left = torch.zeros((self.n_features_, m-1))
         for idx in tqdm(range(self.n_features_), desc='Finding Best Split', leave=False):
-            sorted_idx = torch.argsort(X[:, idx])
-            thresholds = X[sorted_idx, idx]
-            classes = y[sorted_idx]
+            # thresholds = X[sorted_idx[:, idx], idx]
+            classes = y[sorted_idx[:, idx]]
+            all_num_left[idx, m_range, classes[:-1]] = 1
 
-            # create a torch range from 1 to m
-            m_range = torch.arange(1, m)
-            num_left = torch.zeros((m, self.n_classes_))
-            num_left[m_range, classes[:-1]] = 1
-            # cummulative sum from 1 to m
-            num_left = torch.cumsum(num_left, axis=0)
-            num_right = torch.tile(class_counts, (m, 1)) - num_left
+            # # create a torch range from 1 to m
+            # num_left = torch.zeros((m, self.n_classes_))
+            # # num_left = all_num_left[idx]
+            # num_left[m_range, classes[:-1]] = 1
+            # # cummulative sum from 1 to m
+            # num_left = torch.cumsum(num_left, axis=0)
+            # num_right = torch.tile(class_counts, (m, 1)) - num_left
 
-            # gini impurity calculation
-            num_left = num_left[1:]
-            num_right = num_right[:-1]
-            gini_left = 1.0 - torch.sum((num_left / torch.arange(1, m).reshape(-1, 1)) ** 2, axis=1)
-            gini_right = 1.0 - torch.sum((num_right / (m - torch.arange(1, m)).reshape(-1, 1)) ** 2, axis=1)
-            gini = (torch.arange(1, m) * gini_left + (m - torch.arange(1, m)) * gini_right) / m
+            # # gini impurity calculation
+            # gini_left = 1.0 - torch.sum((num_left[1:] / unsq_m_range) ** 2, axis=1)
+            # _tmp_all_gini_left[idx] = gini_left
+            # gini_right = 1.0 - torch.sum((num_right[1:] / gini_right_m_range) ** 2, axis=1)
+            # gini = (m_range * gini_left + gini_m_range * gini_right) / m
 
-            # find the best split
-            i = torch.argmin(gini)
-            if gini[i] < best_gini:
-                best_idx = idx
-                best_thr = (thresholds[i] + thresholds[i - 1]) / 2
+            # # find the best split
+            # i = torch.argmin(gini)
+            # if gini[i] < best_gini:
+            #     best_idx = idx
+            #     best_thr = (thresholds[i] + thresholds[i - 1]) / 2
+
+        all_num_left = torch.cumsum(all_num_left, axis=1)
+        print(all_num_left.shape)
+        all_num_right = torch.tile(class_counts, (self.n_features_, m, 1)) - all_num_left
+        all_num_left = all_num_left[:, 1:, :]
+        all_num_right = all_num_right[:, 1:, :]
+        all_gini_left = 1.0 - torch.sum((all_num_left / unsq_m_range) ** 2, axis=2)
+        # # print all_gini left and _tmp_all_gini_left side by side for each index
+        # for i in range(self.n_features_):
+        #     for j in range(m-1):
+        #         print(f'all_gini_left[{i}, {j}] = {all_gini_left[i, j]:.3f}', end='\t')
+        #         print(f'_tmp_all_gini_left[{i}, {j}] = {_tmp_all_gini_left[i, j]:.3f}')
+
+        # exit()
+        all_gini_right = 1.0 - torch.sum((all_num_right / gini_right_m_range) ** 2, axis=2)
+        # print(all_gini_left.shape, all_gini_right.shape)
+        # print(m_range.shape, gini_m_range.shape)
+        # exit()
+        all_gini = (m_range * all_gini_left + gini_m_range * all_gini_right) / m
+        print(f'all_gini shape: {all_gini.shape}')
+
+        x = torch.argmin(all_gini)
+        i = x // m
+        j = x % m
+        if all_gini[i, j] < best_gini:
+            best_thr = (X[sorted_idx[j, i], i] + X[sorted_idx[j - 1, i], i]) / 2
+            best_idx = i
 
         return best_idx, best_thr
 
