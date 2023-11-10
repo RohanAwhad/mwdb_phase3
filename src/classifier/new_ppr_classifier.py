@@ -81,7 +81,6 @@ class PersonalizedPageRankClassifier:
 
         print('starting page rank')
         for _ in range(self.max_iter):
-            print(R.shape, M.shape, S.shape)
             R_next = self.alpha * torch.matmul(M.T, R) + (1 - self.alpha) * S
 
             # Check for convergence
