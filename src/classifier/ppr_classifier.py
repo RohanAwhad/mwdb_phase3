@@ -27,10 +27,8 @@ class PersonalizedPageRankClassifier:
         for x in tqdm(X, desc='Predicting', leave=False):
             # Compute similarity to existing points and update graph
             updated_graph = self._update_graph(self.graph, x)
-            print('graph updated')
             scores = torch.stack([self._page_rank(updated_graph, torch.concatenate((personal_vector, torch.tensor([0]))))
                                for personal_vector in self.personalization_vectors])
-            print('personalized page rank scores calculated')
             # Take the class with the highest PageRank score as the prediction
             predicted_class = self.classes_[scores[:, -1].argmax()]
             predictions.append(predicted_class)
@@ -79,7 +77,6 @@ class PersonalizedPageRankClassifier:
         # Compute the teleporting vector based on personalization
         S = personalization_vector
 
-        print('starting page rank')
         for _ in range(self.max_iter):
             R_next = self.alpha * torch.matmul(M.T, R) + (1 - self.alpha) * S
 
@@ -89,7 +86,6 @@ class PersonalizedPageRankClassifier:
 
             R = R_next
 
-        print('page rank done')
         return R
 
     def _update_graph(self, graph, x):
