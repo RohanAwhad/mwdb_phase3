@@ -62,10 +62,12 @@ class DecisionTreeClassifier:
         # randomly sample a subset of datapoints to consider for calculating
         # gini impurity and finding the best split
 
-        m = int(X.shape[0] ** 0.5)
-        # m = X.shape[0]  # Number of samples
+        m = max(int(X.shape[0] ** 0.5), 100)
+        m = min(m, X.shape[0])
         if m <= 1: return None, None
-        X = X[np.random.choice(X.shape[0], m, replace=False)]
+        datapoint_indices = np.random.choice(X.shape[0], size=m, replace=False)
+        X = X[datapoint_indices]
+        y = y[datapoint_indices]
 
         # Unique classes and their counts
         class_counts = torch.zeros(self.n_classes_)
@@ -79,13 +81,13 @@ class DecisionTreeClassifier:
         k = int(self.n_features_ ** 0.5)
 
         # find the k features with the highest variance
-        # variances = torch.var(X, dim=0)
-        # feat_indices = torch.argsort(variances)[-k:]
-        # new_X = X[:, feat_indices]
+        variances = torch.var(X, dim=0)
+        feat_indices = torch.argsort(variances)[-k:]
+        new_X = X[:, feat_indices]
 
         # find the k features randomly
-        feat_indices = np.random.choice(self.n_features_, size=int(np.sqrt(self.n_features_)), replace=False)
-        new_X = X[:, feat_indices]
+        # feat_indices = np.random.choice(self.n_features_, size=k, replace=False)
+        # new_X = X[:, feat_indices]
 
         # Loop through all features
         m_range = torch.arange(1, m)
