@@ -1,5 +1,14 @@
 import torch
 from tqdm import tqdm
+import numpy as np
+
+'''
+Possible Optimizations for best_splits:
+- Histogram-based Splits: Create a histogram or a discrete binning of continuous features and then only consider splitting on bin edges. This is the approach used by algorithms like H2O's Random Forest and LightGBM.
+- Approximate Algorithms: For very large datasets, consider using approximate algorithms to find split points. These algorithms work by approximating the best split point rather than finding the exact best split through sorting and evaluating every possible threshold.
+- Feature Sampling: At each node, randomly sample a subset of features to consider for splitting, rather than evaluating all features. This reduces the computation per node and can help with generalization by reducing the variance of the model.
+- Variance Reduction: Evaluate the variance reduction for each feature as a potential split criterion. Features that contribute little to reducing the overall variance may be less likely to be good candidates for splitting.
+'''
 
 class DecisionTreeNode:
     def __init__(self, gini, num_samples, num_samples_per_class, predicted_class):
@@ -38,81 +47,63 @@ class DecisionTreeClassifier:
         m = len(y)
         return 1.0 - sum((torch.sum(y == c).item() / m) ** 2 for c in torch.unique(y))  # sum of squares of probabilities of each class
 
+
     def _best_split(self, X, y):
         """
         Find the best split for a decision tree classifier.
 
         Parameters:
-        X (torch.Tensor): The input data.
-        y (torch.Tensor): The target labels.
+        X (np.ndarray): The input data.
+        y (np.ndarray): The target labels.
 
         Returns:
         Tuple[int, float]: The index of the best feature and the threshold value for the best split.
         """
+        # if X, and y have torch tensors or numpy arrays
+        if not isinstance(X, np.ndarray): X = np.array(X)
+        if not isinstance(y, np.ndarray): y = np.array(y)
         m = X.shape[0]  # Number of samples
         if m <= 1: return None, None
 
         # Unique classes and their counts
-        class_counts = torch.zeros(self.n_classes_)
-        for c in torch.unique(y): class_counts[c] = torch.sum(y == c)
+        class_counts = np.zeros(self.n_classes_)
+        for c in np.unique(y): class_counts[c] = np.sum(y == c)
 
         best_gini = 1.0 - sum((n / m) ** 2 for n in class_counts)
         best_idx, best_thr = None, None
 
         # Loop through all features
-        m_range = torch.arange(1, m)
+        m_range = np.arange(1, m)
         unsq_m_range = m_range.reshape(-1, 1)
         gini_right_m_range = m - unsq_m_range
         gini_m_range = m - m_range
-        sorted_idx = torch.argsort(X, axis=0)
-        all_num_left = torch.zeros((self.n_features_, m, self.n_classes_))
-        # _tmp_all_gini_left = torch.zeros((self.n_features_, m-1))
+        sorted_idx = np.argsort(X, axis=0)
+        all_num_left = np.zeros((self.n_features_, m, self.n_classes_))
         for idx in tqdm(range(self.n_features_), desc='Finding Best Split', leave=False):
-            # thresholds = X[sorted_idx[:, idx], idx]
             classes = y[sorted_idx[:, idx]]
             all_num_left[idx, m_range, classes[:-1]] = 1
 
-            # # create a torch range from 1 to m
-            # num_left = torch.zeros((m, self.n_classes_))
-            # # num_left = all_num_left[idx]
-            # num_left[m_range, classes[:-1]] = 1
-            # # cummulative sum from 1 to m
-            # num_left = torch.cumsum(num_left, axis=0)
-            # num_right = torch.tile(class_counts, (m, 1)) - num_left
-
-            # # gini impurity calculation
-            # gini_left = 1.0 - torch.sum((num_left[1:] / unsq_m_range) ** 2, axis=1)
-            # _tmp_all_gini_left[idx] = gini_left
-            # gini_right = 1.0 - torch.sum((num_right[1:] / gini_right_m_range) ** 2, axis=1)
-            # gini = (m_range * gini_left + gini_m_range * gini_right) / m
-
-            # # find the best split
-            # i = torch.argmin(gini)
-            # if gini[i] < best_gini:
-            #     best_idx = idx
-            #     best_thr = (thresholds[i] + thresholds[i - 1]) / 2
-
-        all_num_left = torch.cumsum(all_num_left, axis=1)
-        print(all_num_left.shape)
-        all_num_right = torch.tile(class_counts, (self.n_features_, m, 1)) - all_num_left
+        # print status after every operation
+        print('finished all_num_left')
+        # set it to ascontinugous to avoid memory error
+        #all_num_left = np.cumsum(all_num_left, axis=1)
+        for i in tqdm(range(self.n_features_), desc='Cumsum on all_num_left', leave=False):
+            for j in range(1, m):
+                all_num_left[i, j, :] += all_num_left[i, j-1, :]
+        print('finished cumsum on all_num_left')
+        all_num_right = class_counts - all_num_left
+        print('calculated all_num_right')
         all_num_left = all_num_left[:, 1:, :]
         all_num_right = all_num_right[:, 1:, :]
-        all_gini_left = 1.0 - torch.sum((all_num_left / unsq_m_range) ** 2, axis=2)
-        # # print all_gini left and _tmp_all_gini_left side by side for each index
-        # for i in range(self.n_features_):
-        #     for j in range(m-1):
-        #         print(f'all_gini_left[{i}, {j}] = {all_gini_left[i, j]:.3f}', end='\t')
-        #         print(f'_tmp_all_gini_left[{i}, {j}] = {_tmp_all_gini_left[i, j]:.3f}')
-
-        # exit()
-        all_gini_right = 1.0 - torch.sum((all_num_right / gini_right_m_range) ** 2, axis=2)
-        # print(all_gini_left.shape, all_gini_right.shape)
-        # print(m_range.shape, gini_m_range.shape)
-        # exit()
+        print('sliced all_num_left and all_num_right')
+        all_gini_left = 1.0 - np.sum((all_num_left / unsq_m_range) ** 2, axis=2)
+        print('calculated all_gini_left')
+        all_gini_right = 1.0 - np.sum((all_num_right / gini_right_m_range) ** 2, axis=2)
+        print('calculated all_gini_right')
         all_gini = (m_range * all_gini_left + gini_m_range * all_gini_right) / m
-        print(f'all_gini shape: {all_gini.shape}')
+        print('calculated all_gini')
 
-        x = torch.argmin(all_gini)
+        x = np.argmin(all_gini)
         i = x // (m-1)
         j = x % (m-1)
         if all_gini[i, j] < best_gini:
@@ -120,6 +111,53 @@ class DecisionTreeClassifier:
             best_idx = i
 
         return best_idx, best_thr
+    # def _best_split(self, X, y, percentiles=[10, 20, 30, 40, 50, 60, 70, 80, 90]):
+    #     class_counts = torch.zeros(self.n_classes_)
+    #     for c in torch.unique(y):
+    #         class_counts[c] = torch.sum(y == c)
+        
+    #     best_gini = 1.0 - sum((n / len(y)) ** 2 for n in class_counts)
+    #     best_idx, best_thr = None, None
+        
+    #     # Loop through all features
+    #     for idx in tqdm(range(self.n_features_)):
+    #         feature_values = X[:, idx]
+    #         unique_values = torch.unique(feature_values)
+
+    #         # Get threshold candidates based on percentiles
+    #         k_list = list(map(int, len(unique_values) * (torch.tensor(percentiles) / 100.0)))
+    #         threshold_candidates = unique_values[k_list]
+            
+    #         for threshold in threshold_candidates:
+    #             left_mask = feature_values <= threshold
+    #             right_mask = feature_values > threshold
+                
+    #             left_classes = y[left_mask]
+    #             right_classes = y[right_mask]
+                
+    #             # Compute class counts for left and right splits
+    #             left_counts = torch.zeros(self.n_classes_)
+    #             right_counts = torch.zeros(self.n_classes_)
+    #             for c in torch.unique(y):
+    #                 left_counts[c] = torch.sum(left_classes == c)
+    #                 right_counts[c] = torch.sum(right_classes == c)
+                
+    #             # Compute Gini for left and right
+    #             m_left = left_classes.size(0)
+    #             m_right = right_classes.size(0)
+    #             gini_left = 1.0 - sum((n / m_left) ** 2 for n in left_counts if m_left > 0)
+    #             gini_right = 1.0 - sum((n / m_right) ** 2 for n in right_counts if m_right > 0)
+                
+    #             # Weighted Gini for this split
+    #             gini = (m_left * gini_left + m_right * gini_right) / (m_left + m_right)
+                
+    #             # Check if this is the best split so far
+    #             if gini < best_gini:
+    #                 best_gini = gini
+    #                 best_idx = idx
+    #                 best_thr = threshold
+                    
+    #     return best_idx, best_thr
 
 
     def _grow_tree(self, X, y, depth=0):
@@ -212,3 +250,6 @@ if __name__ == '__main__':
     clf.fit(torch.tensor(X_train), torch.tensor(y_train))
     my_predictions = clf.predict(torch.tensor(X_test))
     print(accuracy_score(y_test, my_predictions))
+    # check how many of my_predicitons were for class 0
+    print(np.sum(np.array(my_predictions) == 0))
+    print(len(my_predictions))
