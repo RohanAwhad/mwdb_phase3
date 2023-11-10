@@ -59,9 +59,13 @@ class DecisionTreeClassifier:
         Returns:
         Tuple[int, float]: The index of the best feature and the threshold value for the best split.
         """
-        # if X, and y have torch tensors or numpy arrays
-        m = X.shape[0]  # Number of samples
+        # randomly sample a subset of datapoints to consider for calculating
+        # gini impurity and finding the best split
+
+        m = int(X.shape[0] ** 0.5)
+        # m = X.shape[0]  # Number of samples
         if m <= 1: return None, None
+        X = X[np.random.choice(X.shape[0], m, replace=False)]
 
         # Unique classes and their counts
         class_counts = torch.zeros(self.n_classes_)
@@ -149,8 +153,6 @@ class DecisionTreeClassifier:
                 node.threshold = thr
                 node.left = self._grow_tree(X_left, y_left, depth + 1)
                 node.right = self._grow_tree(X_right, y_right, depth + 1)
-        else:
-            print(f'leaf node at depth {depth} with {len(y)} samples')
 
         return node
 
@@ -203,7 +205,7 @@ if __name__ == '__main__':
     print(accuracy_score(y_test, predictions))
 
     print('Custom Decision Tree Classifier:')
-    clf = DecisionTreeClassifier(max_depth=3)
+    clf = DecisionTreeClassifier(max_depth=10)
     clf.fit(torch.tensor(X_train), torch.tensor(y_train))
     my_predictions = clf.predict(torch.tensor(X_test))
     print(accuracy_score(y_test, my_predictions))
