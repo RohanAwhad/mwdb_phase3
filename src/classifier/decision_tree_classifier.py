@@ -73,9 +73,14 @@ class DecisionTreeClassifier:
         best_idx, best_thr = None, None
 
         # Loop through a random subset of features
-        feature_indices = np.random.choice(self.n_features_, size=int(np.sqrt(self.n_features_)), replace=False)
-        for idx in tqdm(feature_indices, desc='Finding Best Split', leave=False):
-            feature_values = X[:, idx]
+        k = int(np.sqrt(self.n_features_))
+        variances = np.var(X, axis=0)
+        top_k_indices = np.argsort(variances)[-k:]
+        new_X = X[:, top_k_indices]
+
+        #feature_indices = np.random.choice(self.n_features_, size=int(np.sqrt(self.n_features_)), replace=False)
+        for idx in tqdm(range(k), desc='Finding Best Split', leave=False):
+            feature_values = new_X[:, idx]
             sorted_idx = np.argsort(feature_values)
             class_counts_left = np.zeros(self.n_classes_)
             class_counts_right = class_counts.copy()
@@ -96,7 +101,7 @@ class DecisionTreeClassifier:
 
                 if gini < best_gini:
                     best_gini = gini
-                    best_idx = idx
+                    best_idx = top_k_indices[idx]
                     best_thr = (feature_values[sorted_idx[i]] + feature_values[sorted_idx[i - 1]]) / 2
 
         return best_idx, best_thr
