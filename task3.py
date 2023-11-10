@@ -102,10 +102,14 @@ else:
 
 
 def main(classifier):
-    n = 4000
-    indices = torch.randperm(len(features))[:n]
+    global features, labels, odd_image_features, trues
+    indices = torch.randperm(len(features))  # Randomly shuffle indices
+    features = features[indices]
+    labels = labels[indices]
+
+    # fit classifier
     start_time = time.time()
-    classifier.fit(features[indices], labels[indices])
+    classifier.fit(features, labels)
     end_time = time.time()
     print(f"Time taken to fit classifier: {end_time - start_time:.2f} seconds")
     predictions = torch.tensor(classifier.predict(odd_image_features))
@@ -131,7 +135,7 @@ def main(classifier):
     accuracy = tp / len(predictions)
 
 
-    with open('outputs/task1.csv', 'w') as f:
+    with open(f'outputs/task3_{classifier.__class__.__name__}.csv', 'w') as f:
         f.write('label,precision,recall,f1_score\n')
         for label, metrics in per_label_metrics.items():
             f.write(f'{label},{metrics["precision"]},{metrics["recall"]},{metrics["f1_score"]}\n')
@@ -149,16 +153,14 @@ def main(classifier):
 if __name__ == '__main__':
     try:
         while True:
-            #classifier = int(input('Enter the classifier type:\n1. m-NN\n2. Decision Tree\n3. PPR\n> '))
-            classifier = 2
+            classifier = int(input('Enter the classifier type:\n1. m-NN\n2. Decision Tree\n3. PPR\n> '))
             if classifier == 1: classifier = NearestNeighborClassifier(m=int(input('Enter m: ')))
-            elif classifier == 2: classifier = DecisionTreeClassifier(max_depth=10)
+            elif classifier == 2: classifier = DecisionTreeClassifier(max_depth=150)
             elif classifier == 3: classifier = PPRClassifier()
             else: raise ValueError('Invalid classifier type')
 
             # call main
             print('Running classifier...')
             main(classifier)
-            break
     except KeyboardInterrupt:
         print('Exiting...')
