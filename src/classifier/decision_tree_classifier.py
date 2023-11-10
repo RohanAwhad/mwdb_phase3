@@ -72,43 +72,32 @@ class DecisionTreeClassifier:
         best_gini = 1.0 - sum((n / m) ** 2 for n in class_counts)
         best_idx, best_thr = None, None
 
-        # Loop through all features
-        m_range = np.arange(1, m)
-        unsq_m_range = m_range.reshape(-1, 1)
-        gini_right_m_range = m - unsq_m_range
-        gini_m_range = m - m_range
-        sorted_idx = np.argsort(X, axis=0)
-        all_num_left = np.zeros((self.n_features_, m, self.n_classes_))
-        for idx in tqdm(range(self.n_features_), desc='Finding Best Split', leave=False):
-            classes = y[sorted_idx[:, idx]]
-            all_num_left[idx, m_range, classes[:-1]] = 1
+        # Loop through a random subset of features
+        feature_indices = np.random.choice(self.n_features_, size=int(np.sqrt(self.n_features_)), replace=False)
+        for idx in tqdm(feature_indices, desc='Finding Best Split', leave=False):
+            feature_values = X[:, idx]
+            sorted_idx = np.argsort(feature_values)
+            class_counts_left = np.zeros(self.n_classes_)
+            class_counts_right = class_counts.copy()
+            num_left = 0
+            num_right = m
+            for i in range(1, m):
+                c = y[sorted_idx[i - 1]]
+                class_counts_left[c] += 1
+                class_counts_right[c] -= 1
+                num_left += 1
+                num_right -= 1
+                if feature_values[sorted_idx[i]] == feature_values[sorted_idx[i - 1]]:
+                    continue
 
-        # print status after every operation
-        print('finished all_num_left')
-        # set it to ascontinugous to avoid memory error
-        #all_num_left = np.cumsum(all_num_left, axis=1)
-        for i in tqdm(range(self.n_features_), desc='Cumsum on all_num_left', leave=False):
-            for j in range(1, m):
-                all_num_left[i, j, :] += all_num_left[i, j-1, :]
-        print('finished cumsum on all_num_left')
-        all_num_right = class_counts - all_num_left
-        print('calculated all_num_right')
-        all_num_left = all_num_left[:, 1:, :]
-        all_num_right = all_num_right[:, 1:, :]
-        print('sliced all_num_left and all_num_right')
-        all_gini_left = 1.0 - np.sum((all_num_left / unsq_m_range) ** 2, axis=2)
-        print('calculated all_gini_left')
-        all_gini_right = 1.0 - np.sum((all_num_right / gini_right_m_range) ** 2, axis=2)
-        print('calculated all_gini_right')
-        all_gini = (m_range * all_gini_left + gini_m_range * all_gini_right) / m
-        print('calculated all_gini')
+                gini_left = 1.0 - sum((class_counts_left[x] / num_left) ** 2 for x in range(self.n_classes_))
+                gini_right = 1.0 - sum((class_counts_right[x] / num_right) ** 2 for x in range(self.n_classes_))
+                gini = (num_left * gini_left + num_right * gini_right) / m
 
-        x = np.argmin(all_gini)
-        i = x // (m-1)
-        j = x % (m-1)
-        if all_gini[i, j] < best_gini:
-            best_thr = (X[sorted_idx[j, i], i] + X[sorted_idx[j - 1, i], i]) / 2
-            best_idx = i
+                if gini < best_gini:
+                    best_gini = gini
+                    best_idx = idx
+                    best_thr = (feature_values[sorted_idx[i]] + feature_values[sorted_idx[i - 1]]) / 2
 
         return best_idx, best_thr
     # def _best_split(self, X, y, percentiles=[10, 20, 30, 40, 50, 60, 70, 80, 90]):
