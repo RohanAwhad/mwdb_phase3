@@ -85,7 +85,6 @@ class PersonalizedPageRankClassifier:
                 break
 
             R = R_next
-
         return R
 
     def _update_graph(self, graph, x):
