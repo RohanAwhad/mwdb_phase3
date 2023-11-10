@@ -113,8 +113,8 @@ class DecisionTreeClassifier:
         print(f'all_gini shape: {all_gini.shape}')
 
         x = torch.argmin(all_gini)
-        i = x // m
-        j = x % m
+        i = x // (m-1)
+        j = x % (m-1)
         if all_gini[i, j] < best_gini:
             best_thr = (X[sorted_idx[j, i], i] + X[sorted_idx[j - 1, i], i]) / 2
             best_idx = i
