@@ -16,6 +16,7 @@ import torchvision
 
 from torchvision.transforms import functional as TF
 from tqdm import tqdm
+import time
 
 os.makedirs('artifacts', exist_ok=True)
 os.makedirs('outputs', exist_ok=True)
@@ -101,7 +102,12 @@ else:
 
 
 def main(classifier):
-    classifier.fit(features, labels)
+    n = 4000
+    indices = torch.randperm(len(features))[:n]
+    start_time = time.time()
+    classifier.fit(features[indices], labels[indices])
+    end_time = time.time()
+    print(f"Time taken to fit classifier: {end_time - start_time:.2f} seconds")
     predictions = torch.tensor(classifier.predict(odd_image_features))
     per_label_metrics = {}
 
@@ -151,6 +157,7 @@ if __name__ == '__main__':
             else: raise ValueError('Invalid classifier type')
 
             # call main
+            print('Running classifier...')
             main(classifier)
             break
     except KeyboardInterrupt:
