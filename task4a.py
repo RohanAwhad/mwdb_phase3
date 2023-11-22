@@ -1,9 +1,9 @@
 import os
 import torchvision
 import torch
+import math
 from torchvision import datasets, transforms
 import numpy as np
-from sklearn.metrics.pairwise import euclidean_distances
 from tqdm import tqdm  # Import tqdm for the progress bar
 import pickle
 from collections import defaultdict
@@ -14,13 +14,13 @@ import helper
 from feature_descriptor import FeatureDescriptor
 import argparse
 feature_descriptor = FeatureDescriptor(net=config.RESNET_MODEL)
-
+np.random.seed(0)
 
 
 
 
 class MultiLayerLSH:
-    def __init__(self, num_layers, num_random_vectors, input_dim,projection_vectors):
+    def __init__(self, num_layers, num_random_vectors, input_dim,projection_vectors,random_width_vectors):
         self.num_layers = num_layers
         self.num_random_vectors = num_random_vectors
         self.input_dim = input_dim
@@ -30,15 +30,22 @@ class MultiLayerLSH:
         # Store hash values for each input vector
         self.hash_values = {}
         self.data_vectors = {}
+        self.width_vectors = random_width_vectors
+        self.max1 = -111111
+        self.min1 = 11111
 
-    def hash_function(self, vector, projection_vector):
+    def hash_function(self, vector, projection_vector,width):
         # print(vector.shape,projection_vector.shape)
+        vector = vector / np.linalg.norm(vector)
         projection = np.dot(vector, projection_vector)
+        self.max1 = max(self.max1,projection)
+        self.min1 = min(projection, self.min1)
+        # print(math.floor(projection/width))
         # self.segment_size = np.linalg.norm(projection_vector) / num_segments
         # print(segment_size)
-        if(projection>0): return 1
-        else: return 0
-        # return int(projection/self.segment_size)
+        # if(projection>0): return 1
+        # else: return 0
+        return math.floor(projection/width)
     
 
     def projection_vec(self):
@@ -53,7 +60,7 @@ class MultiLayerLSH:
     def hash_data(self, data_vector, layer):
         hashes = []
         for i in range(self.num_random_vectors):
-            hash_value = self.hash_function(data_vector, self.projection_vectors[layer, i, :])
+            hash_value = self.hash_function(data_vector, self.projection_vectors[layer, i, :],self.width_vectors[layer,i])
             hashes.append(hash_value)
         return hashes
 
@@ -110,16 +117,19 @@ def main():
         # Initialize random projection vectors for each layer
         projection_vectors = 2*np.random.rand(num_layers, num_random_vectors, input_dim)-1
         projection_vectors /= np.linalg.norm(projection_vectors, axis=-1, keepdims=True)
+        random_width_vector = np.random.rand(num_layers, num_random_vectors)*0.1 + 0.001*num_layers*num_random_vectors
         # Dump the NumPy array to a file using pickle
         # with open('./output/projection_vectors.pkl', 'wb') as file:
         #     pickle.dump(projection_vectors, file)
-        lsh = MultiLayerLSH(num_layers, num_random_vectors, input_dim,projection_vectors)
+        lsh = MultiLayerLSH(num_layers, num_random_vectors, input_dim,projection_vectors,random_width_vector)
         
         for i in (tqdm(range(len(feat_db)))):
             image_vector = feat_db[i]
             lsh.store_hash(idx_dict[i][0], image_vector)
         # lsh.save_hash_values('./output/hash_values.pkl')
         # Serialize and save the object to a file
+        # print("Max", lsh.max1)
+        # print("Min1", lsh.min1)
         with open('./output/lsh.pkl', 'wb') as file:
             pickle.dump(lsh, file)
 

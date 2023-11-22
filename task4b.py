@@ -4,7 +4,6 @@ import torchvision
 import torch
 from torchvision import datasets, transforms
 import numpy as np
-from sklearn.metrics.pairwise import euclidean_distances
 from tqdm import tqdm  # Import tqdm for the progress bar
 import pickle
 from collections import defaultdict
@@ -31,7 +30,9 @@ def find_k_nearest(new_image_vector, loaded_lsh, k=5):
         all_images = []
         for layer, hash_layer in enumerate(new_hash):
             # Calculate L2 distance between new hash and stored hash
-            all_images += loaded_lsh.hash_values[(layer,tuple(hash_layer))]
+            value = loaded_lsh.hash_values.get((layer,tuple(hash_layer)), None)
+            if value is not None:
+                all_images += value
             
         unique_images = list(dict.fromkeys(all_images))
         # print(all_images)
@@ -100,7 +101,7 @@ parser.add_argument('img_id', type=str, help='Query image id')
 
 # Parse the arguments
 args = parser.parse_args()
-num_layers = int(args.knn)
+knn = int(args.knn) 
 query_image = int(args.img_id)
 
 print('loading caltech101 dataset ...')
@@ -116,7 +117,7 @@ if image.mode != "RGB": image = image.convert('RGB')
 image_vector = feature_descriptor.extract_features(image, 'resnet_fc')
 
 
-k_near_images,total_images,unique_images = find_k_nearest(image_vector,loaded_lsh)
+k_near_images,total_images,unique_images = find_k_nearest(image_vector,loaded_lsh,knn)
 
 
 

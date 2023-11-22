@@ -1,6 +1,8 @@
+.DS_Store
 models
 data
 artifacts
+output
 outputs
 *.swp
 __pycache__
