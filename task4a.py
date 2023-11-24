@@ -57,8 +57,8 @@ class MultiLayerLSH:
         return self.projection_vectors
 
     def length(self):
-        for layer in range(num_layers):
-            for i in range(num_random_vectors):
+        for layer in range(self.num_layers):
+            for i in range(self.num_random_vectors):
                 proj = self.projection_vectors[layer, i, :]
                 # print(np.linalg.norm(proj)/ num_segments)
 
