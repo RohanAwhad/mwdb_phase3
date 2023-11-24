@@ -151,7 +151,7 @@ def main():
         # Serialize and save the object to a file
         # print("Max", lsh.max1)
         # print("Min1", lsh.min1)
-        with open("./output/lsh.pkl", "wb") as file:
+        with open("./outputs/lsh.pkl", "wb") as file:
             pickle.dump(lsh, file)
 
 

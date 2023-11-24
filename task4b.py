@@ -123,7 +123,7 @@ print("loading caltech101 dataset ...")
 DATA_DIR = "./data/caltech101"
 dataset = torchvision.datasets.Caltech101(DATA_DIR, download=True)
 
-with open("./output/lsh.pkl", "rb") as file:
+with open("./outputs/lsh.pkl", "rb") as file:
     loaded_lsh = pickle.load(file)
 
 
