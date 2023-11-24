@@ -200,7 +200,9 @@ if __name__ == "__main__":
                 classifier = DecisionTreeClassifier(max_depth=150)
                 output_fn = f"outputs/task3_{classifier.__class__.__name__}.csv"
             elif classifier == 3:
-                classifier = PPRClassifier(alpha=float(input("Enter alpha: ")))
+                classifier = PPRClassifier(
+                    alpha=1.0 - float(input("Enter random jump probability: "))
+                )
                 output_fn = f"outputs/task3_{classifier.__class__.__name__}_alpha_{classifier.alpha}.csv"
             else:
                 raise ValueError("Invalid classifier type")
