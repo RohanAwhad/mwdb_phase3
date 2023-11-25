@@ -99,7 +99,7 @@ else:
 labels = torch.tensor(labels)
 
 ODD_IMG_FEAT_PATH = "artifacts/odd_img_features.pkl"
-ODD_IMG_LABELS_PATH = "artifacts/odd_image_labels.pkl"
+ODD_IMG_LABELS_PATH = "artifacts/odd_image_labels_K_256.pkl"
 if os.path.exists(ODD_IMG_FEAT_PATH):
     odd_image_features = torch.load(ODD_IMG_FEAT_PATH)
     trues = torch.load(ODD_IMG_LABELS_PATH)
