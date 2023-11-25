@@ -138,8 +138,8 @@ else:
     torch.save(labels, "artifacts/labels.pkl")
     torch.save(image_ids, "artifacts/image_ids.pkl")
 
-IMG_LATENT_FEAT_MAP_PATH = "artifacts/img_latent_feat_map.pkl"
-IMG_LATENT_FEAT_COMPONENTS_PATH = "artifacts/img_latent_feat_components.pkl"
+IMG_LATENT_FEAT_MAP_PATH = f"artifacts/img_latent_feat_map_K_{K}.pkl"
+IMG_LATENT_FEAT_COMPONENTS_PATH = f"artifacts/img_latent_feat_components_K_{K}.pkl"
 if os.path.exists(IMG_LATENT_FEAT_MAP_PATH):
     latent_features = torch.load(IMG_LATENT_FEAT_MAP_PATH)
     svd.components_ = torch.load(IMG_LATENT_FEAT_COMPONENTS_PATH)
@@ -149,7 +149,7 @@ else:
     torch.save(svd.components_, IMG_LATENT_FEAT_COMPONENTS_PATH)
 
 
-LABEL_LATENT_FEAT_MAP_PATH = "artifacts/label_latent_feat_map.pkl"
+LABEL_LATENT_FEAT_MAP_PATH = f"artifacts/label_latent_feat_map_K_{K}.pkl"
 if os.path.exists(LABEL_LATENT_FEAT_MAP_PATH):
     label_latent_feat_map = torch.load(LABEL_LATENT_FEAT_MAP_PATH)
 else:
@@ -164,8 +164,8 @@ else:
 
 preds = []
 
-ODD_IMG_LATENT_FEAT_PATH = "artifacts/odd_img_latent_feat.pkl"
-ODD_IMG_LABELS_PATH = "artifacts/odd_image_labels.pkl"
+ODD_IMG_LATENT_FEAT_PATH = f"artifacts/odd_img_latent_feat_K_{K}.pkl"
+ODD_IMG_LABELS_PATH = f"artifacts/odd_image_labels_K_{K}.pkl"
 if os.path.exists(ODD_IMG_LATENT_FEAT_PATH):
     odd_image_latent_features = torch.load(ODD_IMG_LATENT_FEAT_PATH)
     trues = torch.load(ODD_IMG_LABELS_PATH)
