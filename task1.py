@@ -108,7 +108,8 @@ class SVD:
 
 extractor = FeatureExtractor()
 svd = SVD()
-K = 512
+K = input("Enter the number of latent dimensions (K): ")
+K = 512 if K == "" else int(K)
 
 if os.path.exists("artifacts/resnet50_avgpool_features.pkl"):
     features = torch.load("artifacts/resnet50_avgpool_features.pkl")
