@@ -125,5 +125,8 @@ k_near_images,total_images,unique_images = find_k_nearest(image_vector,loaded_ls
 # display_images_grid(near_images, dataset)
 print("Total Images: ", total_images)
 print("Unique Images: ", unique_images)
-display_images(query_image,k_near_images)
+if(len(k_near_images)==0): 
+    print("No near image found using LSH")   
+else:
+    display_images(query_image,k_near_images)
 
