@@ -108,7 +108,7 @@ class SVD:
 
 extractor = FeatureExtractor()
 svd = SVD()
-K = input("Enter the number of latent dimensions (K): ")
+K = input("Enter the number of latent dimensions (K. Default is 512): ")
 K = 512 if K == "" else int(K)
 
 if os.path.exists("artifacts/resnet50_avgpool_features.pkl"):
@@ -230,7 +230,7 @@ precision = tp / (tp + fp)
 accuracy = tp / len(preds)
 
 
-with open("outputs/task1.csv", "w") as f:
+with open(f"outputs/task1_K_{K}.csv", "w") as f:
     f.write("label,precision,recall,f1_score\n")
     for label, metrics in per_label_metrics.items():
         f.write(
