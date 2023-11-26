@@ -110,7 +110,7 @@ def z_score_normalization(features):
     return normalized_features
 
 
-def dbscan_2(X, eps, min_samples):
+def dbscan(X, eps, min_samples):
     """
     DBSCAN: Density-Based Spatial Clustering of Applications with Noise
 
@@ -179,4 +179,4 @@ def dbscan_2(X, eps, min_samples):
 
 z_normalized_features = z_score_normalization(features.numpy())
 _tmp = z_normalized_features[label_to_idx[0]]
-my_clabels = dbscan_2(_tmp, eps=20, min_samples=2)
+my_clabels = dbscan(_tmp, eps=20, min_samples=2)
