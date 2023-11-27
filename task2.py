@@ -18,7 +18,7 @@ import seaborn as sns
 import torch
 import torchvision
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from torchvision.transforms import functional as TF
 from tqdm import tqdm
 
@@ -486,18 +486,32 @@ def predict_label(image_feature, cluster_centroids):
         The predicted label for the image.
     """
 
-    min_distance = float("inf")
-    predicted_label = None
+    distances = []
+    predicted_labels = []
 
     for label, ccentroids in cluster_centroids.items():
         # calculate distance using euclidean distance
-        distances = np.linalg.norm(ccentroids - image_feature, axis=1)
+        distances_ = np.mean(np.linalg.norm(ccentroids - image_feature, axis=1))
+        distances.append(distances_)
+        predicted_labels.append(label)
 
-        closest_cluster_distance = np.min(distances)
+    # distances = np.array(distances)
+    # predicted_labels = np.array(predicted_labels)
 
-        if closest_cluster_distance < min_distance:
-            min_distance = closest_cluster_distance
-            predicted_label = label
+    # return predicted_labels[np.argmin(distances)]
+
+    # take the top 10 smallest distances
+    top_10_indices = np.argsort(distances)[:10]
+    print(top_10_indices)
+
+    # get the predicted labels for the top 10 smallest distances
+    top_10_predicted_labels = np.array(predicted_labels)[top_10_indices]
+    print(top_10_predicted_labels)
+    # input()
+
+    # find the most common label
+    label_counts = Counter(top_10_predicted_labels)
+    predicted_label = label_counts.most_common(1)[0][0]
 
     return predicted_label
 
