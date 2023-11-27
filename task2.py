@@ -258,6 +258,7 @@ else:
                 target_clusters=N_CLUSTERS,
                 eps_range=eps_range,
                 min_samples_range=(3, 15),
+                iterations=200,
             )
         label_to_dbscan_params[label] = (eps, min_samples, N_CLUSTERS)
 
@@ -399,6 +400,8 @@ else:
         unique_clusters = sorted(list(set(cluster_labels)))
         centroids = []
         for i in unique_clusters:
+            if i == -1:
+                continue
             cluster_features = _tmp[cluster_labels == i]
             centroids.append(np.mean(cluster_features, axis=0))
         label_to_cluster_centroids[label] = np.stack(centroids)
