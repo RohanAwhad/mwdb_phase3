@@ -9,10 +9,12 @@ Task 2: Implement a program which,
 The system should also output per-label precision, recall, and F1-score values as well as output an overall accuracy value.
 
 """
-import pickle
+import matplotlib.pyplot as plt
 import numpy as np
 import os
+import pickle
 import random
+import seaborn as sns
 import torch
 import torchvision
 
@@ -325,11 +327,12 @@ else:
 
 
 # plot clusters in 2D MDS space
-import matplotlib.pyplot as plt
-import seaborn as sns
 
-cntr = 0
 for label, coordinates in label_to_mds.items():
+    # check if the image is already saved
+    img_fn = f"outputs/task2_label_{label}_clusters.png"
+    if os.path.exists(img_fn):
+        continue
     cluster_labels = label_to_clusters[label]
     unique_clusters = sorted(list(set(cluster_labels)))
     plt.figure(figsize=(10, 10))
@@ -346,9 +349,5 @@ for label, coordinates in label_to_mds.items():
         )
     # add legend
     plt.legend(unique_clusters)
-    plt.savefig(f"outputs/task2_label_{label}_clusters.png")
+    plt.savefig(img_fn)
     plt.close()
-
-    cntr += 1
-    if cntr == 3:
-        break
