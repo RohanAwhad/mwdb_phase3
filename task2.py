@@ -113,7 +113,7 @@ def z_score_normalization(features):
 
     # Apply the normalization: (feature - mean) / std_dev
     normalized_features = (features - means) / std_devs
-    return normalized_features
+    return normalized_features, means, std_devs
 
 
 def dbscan(X, eps, min_samples):
@@ -165,17 +165,17 @@ def dbscan(X, eps, min_samples):
 
             if labels[p] == -1:
                 labels[p] = C  # Change noise to border point
-
-            if labels[p] != -1:
+            elif labels[p] != -1:
                 k += 1
                 continue
-            print("hitting post if condition")
             # Add point to cluster
             labels[p] = C
 
             # Get new neighbors and add them to the list
             p_neighbors = np.where(np.linalg.norm(X - X[p], axis=1) < eps)[0]
             if len(p_neighbors) >= min_samples:
+                # remove duplicates
+                p_neighbors = np.setdiff1d(p_neighbors, neighbors)
                 neighbors = np.append(neighbors, p_neighbors)
 
             k += 1
@@ -231,7 +231,10 @@ def random_search_dbscan_params(
     return best_eps, best_min_samples
 
 
-z_normalized_features = z_score_normalization(features.numpy())
+# z_normalized_features, z_mean, z_std = z_score_normalization(features.numpy())
+z_normalized_features = features
+z_mean = 0
+z_std = 1
 label_to_dbscan_params_path = f"artifacts/label_to_dbscan_params_C_{N_CLUSTERS}.pkl"
 if os.path.exists(label_to_dbscan_params_path):
     with open(label_to_dbscan_params_path, "rb") as f:
@@ -239,7 +242,6 @@ if os.path.exists(label_to_dbscan_params_path):
 else:
     label_to_dbscan_params = {}
     for label, indices in tqdm(label_to_idx.items()):
-        print(f"Finding DBSCAN parameters for label {label}...")
         _tmp = z_normalized_features[indices]
 
         # find range of eps
@@ -257,8 +259,8 @@ else:
                 _tmp,
                 target_clusters=N_CLUSTERS,
                 eps_range=eps_range,
-                min_samples_range=(3, 15),
-                iterations=200,
+                min_samples_range=(3, 30),
+                iterations=500,
             )
         label_to_dbscan_params[label] = (eps, min_samples, N_CLUSTERS)
 
@@ -274,7 +276,6 @@ if os.path.exists(label_to_clusters_path):
 else:
     label_to_clusters = {}
     for label, indices in tqdm(label_to_idx.items()):
-        print(f"Finding clusters for label {label}...")
         _tmp = z_normalized_features[indices]
         eps, min_samples, _ = label_to_dbscan_params[label]
         labels = dbscan(_tmp, eps=eps, min_samples=min_samples)
@@ -309,7 +310,6 @@ if os.path.exists(label_to_mds_path):
 else:
     label_to_mds = {}
     for label, indices in tqdm(label_to_idx.items()):
-        print(f"Finding MDS coordinates for label {label}...")
         _tmp = z_normalized_features[indices]
 
         # find distance matrix
@@ -394,7 +394,6 @@ if os.path.exists(label_to_cluster_centroids_path):
 else:
     label_to_cluster_centroids = {}
     for label, indices in tqdm(label_to_idx.items()):
-        print(f"Finding cluster centroids for label {label}...")
         _tmp = z_normalized_features[indices]
         cluster_labels = label_to_clusters[label]
         unique_clusters = sorted(list(set(cluster_labels)))
@@ -444,13 +443,14 @@ def predict_label(image_feature, cluster_centroids):
 
 # predict labels for odd images
 preds = []
-for y_true, feature in tqdm(
+for y_true, img_feature in tqdm(
     zip(odd_image_features, trues),
     desc="Predicting Labels",
     total=len(odd_image_features),
     leave=False,
 ):
-    y_pred = predict_label(feature.numpy(), label_to_cluster_centroids)
+    normalized_feat = (img_feature.numpy() - z_mean) / z_std
+    y_pred = predict_label(normalized_feat, label_to_cluster_centroids)
     preds.append(y_pred)
 
 preds = torch.tensor(preds)
