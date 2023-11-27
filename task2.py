@@ -19,6 +19,7 @@ import torch
 import torchvision
 
 from collections import Counter, defaultdict
+from sklearn.metrics import silhouette_score
 from torchvision.transforms import functional as TF
 from tqdm import tqdm
 
@@ -27,6 +28,7 @@ N_CLUSTERS = 5
 
 os.makedirs("artifacts", exist_ok=True)
 os.makedirs("outputs/task_2", exist_ok=True)
+os.makedirs("outputs/task_2_mds_space", exist_ok=True)
 
 TORCH_HUB = "./models/"
 torch.set_grad_enabled(False)
@@ -101,9 +103,13 @@ else:
     torch.save(image_ids, "artifacts/image_ids.pkl")
 
 
-label_to_idx = defaultdict(list)
+label_to_feat_idx = defaultdict(list)
 for idx, label in enumerate(labels):
-    label_to_idx[label].append(idx)
+    label_to_feat_idx[label].append(idx)
+
+label_to_dataset_idx = defaultdict(list)
+for label, idx in zip(labels, image_ids):
+    label_to_dataset_idx[label].append(idx)
 
 
 def z_score_normalization(features):
@@ -269,9 +275,6 @@ def random_search_dbscan_params(
     return best_eps, best_min_samples
 
 
-from sklearn.metrics import silhouette_score
-
-
 def calculate_best_params(
     X,
     labels,
@@ -395,10 +398,62 @@ def grid_search_dbscan_params(
     return best_eps, best_min_samples
 
 
-z_normalized_features, z_mean, z_std = z_score_normalization(features.numpy())
-# z_normalized_features = features.numpy()
-# z_mean = 0
-# z_std = 1
+# z_normalized_features, z_mean, z_std = z_score_normalization(features.numpy())
+z_normalized_features = features.numpy()
+z_mean = 0
+z_std = 1
+
+
+class MDS:
+    def __init__(self, distance_matrix, dimensions=2):
+        self.distance_matrix = distance_matrix
+        self.dimensions = dimensions
+        self.eigvecs = None
+
+    def fit_transform(self):
+        n = self.distance_matrix.shape[0]
+        centering_matrix = np.eye(n) - np.ones((n, n)) / n
+        B = -0.5 * centering_matrix @ self.distance_matrix**2 @ centering_matrix
+
+        eigvals, eigvecs = np.linalg.eigh(B)
+        idx = np.argsort(eigvals)[::-1]
+        eigvals = eigvals[idx]
+        eigvecs = eigvecs[:, idx]
+
+        eigvals = np.sqrt(np.abs(eigvals[: self.dimensions]))
+        eigvecs = eigvecs[:, : self.dimensions]
+        self.eigvecs = eigvecs
+        coordinates = eigvecs * eigvals
+        return coordinates
+
+    def transform(self, new_point):
+        new_point = new_point - np.mean(self.distance_matrix, axis=0)
+        new_point = new_point @ self.eigvecs
+        return new_point
+
+
+label_to_mds_path = f"artifacts/label_to_mds_C_{N_CLUSTERS}.pkl"
+if os.path.exists(label_to_mds_path):
+    with open(label_to_mds_path, "rb") as f:
+        label_to_mds = pickle.load(f)
+else:
+    label_to_mds = {}
+    for label, indices in tqdm(label_to_feat_idx.items()):
+        _tmp = z_normalized_features[indices]
+
+        # find distance matrix
+        distance_matrix = np.linalg.norm(_tmp[:, np.newaxis] - _tmp, axis=2)
+
+        # find coordinates
+        mds_obj = MDS(distance_matrix)
+        new_feats = mds_obj.fit_transform()
+        label_to_mds[label] = (new_feats, mds_obj)
+
+    # save label_to_mds
+    with open(label_to_mds_path, "wb") as f:
+        pickle.dump(label_to_mds, f)
+
+
 label_to_dbscan_params_path = (
     f"artifacts/label_to_dbscan_params_grid_search_C_{N_CLUSTERS}.pkl"
 )
@@ -407,8 +462,9 @@ if os.path.exists(label_to_dbscan_params_path):
         label_to_dbscan_params = pickle.load(f)
 else:
     label_to_dbscan_params = {}
-    for label, indices in tqdm(label_to_idx.items()):
-        _tmp = z_normalized_features[indices]
+    for label, _ in tqdm(label_to_feat_idx.items()):
+        # _tmp = z_normalized_features[indices]
+        _tmp = label_to_mds[label][0]
 
         # find range of eps
         distance_matrix = np.zeros((len(_tmp), len(_tmp)))
@@ -454,8 +510,8 @@ if os.path.exists(label_to_clusters_path):
         label_to_clusters = pickle.load(f)
 else:
     label_to_clusters = {}
-    for label, indices in tqdm(label_to_idx.items()):
-        _tmp = z_normalized_features[indices]
+    for label, indices in tqdm(label_to_feat_idx.items()):
+        _tmp = label_to_mds[label][0]
         eps, min_samples, _ = label_to_dbscan_params[label]
         labels = dbscan(_tmp, eps=eps, min_samples=min_samples)
         label_to_clusters[label] = labels
@@ -465,53 +521,29 @@ else:
         pickle.dump(label_to_clusters, f)
 
 
-# for each label-specific cluster, reduce dimensions using MDS (Multi-Dimensional Scaling)
-def mds(distance_matrix, dimensions=2):
-    n = distance_matrix.shape[0]
-    centering_matrix = np.eye(n) - np.ones((n, n)) / n
-    B = -0.5 * centering_matrix @ distance_matrix**2 @ centering_matrix
+# # for each label-specific cluster, reduce dimensions using MDS (Multi-Dimensional Scaling)
+# def mds(distance_matrix, dimensions=2):
+#     n = distance_matrix.shape[0]
+#     centering_matrix = np.eye(n) - np.ones((n, n)) / n
+#     B = -0.5 * centering_matrix @ distance_matrix**2 @ centering_matrix
 
-    eigvals, eigvecs = np.linalg.eigh(B)
-    idx = np.argsort(eigvals)[::-1]
-    eigvals = eigvals[idx]
-    eigvecs = eigvecs[:, idx]
+#     eigvals, eigvecs = np.linalg.eigh(B)
+#     idx = np.argsort(eigvals)[::-1]
+#     eigvals = eigvals[idx]
+#     eigvecs = eigvecs[:, idx]
 
-    eigvals = np.sqrt(np.abs(eigvals[:dimensions]))
-    eigvecs = eigvecs[:, :dimensions]
-    coordinates = eigvecs * eigvals
-    return coordinates
-
-
-label_to_mds_path = f"artifacts/label_to_mds_C_{N_CLUSTERS}.pkl"
-if os.path.exists(label_to_mds_path):
-    with open(label_to_mds_path, "rb") as f:
-        label_to_mds = pickle.load(f)
-else:
-    label_to_mds = {}
-    for label, indices in tqdm(label_to_idx.items()):
-        _tmp = z_normalized_features[indices]
-
-        # find distance matrix
-        distance_matrix = np.zeros((len(_tmp), len(_tmp)))
-        for i in range(len(_tmp)):
-            for j in range(len(_tmp)):
-                distance_matrix[i, j] = np.linalg.norm(_tmp[i] - _tmp[j])
-
-        # find coordinates
-        coordinates = mds(distance_matrix)
-        label_to_mds[label] = coordinates
-
-    # save label_to_mds
-    with open(label_to_mds_path, "wb") as f:
-        pickle.dump(label_to_mds, f)
+#     eigvals = np.sqrt(np.abs(eigvals[:dimensions]))
+#     eigvecs = eigvecs[:, :dimensions]
+#     coordinates = eigvecs * eigvals
+#     return coordinates
 
 
 # plot clusters in 2D MDS space
-for label, coordinates in tqdm(
+for label, (coordinates, _) in tqdm(
     label_to_mds.items(), desc="Plotting Clusters", leave=False
 ):
     # check if the image is already saved
-    img_fn = f"outputs/task_2/task2_label_{label}_clusters.png"
+    img_fn = f"outputs/task_2_mds_space/task2_label_{label}_clusters.png"
     if os.path.exists(img_fn):
         continue
     cluster_labels = label_to_clusters[label]
@@ -535,10 +567,12 @@ for label, coordinates in tqdm(
     plt.close()
 
 # for each cluster, plot the images
-for label, indices in tqdm(label_to_idx.items(), desc="Plotting Images", leave=False):
+for label, indices in tqdm(
+    label_to_feat_idx.items(), desc="Plotting Images", leave=False
+):
     indices = np.array(indices)
     # check if the image is already saved
-    img_fn = f"outputs/task_2/task2_label_{label}_images.png"
+    img_fn = f"outputs/task_2_mds_space/task2_label_{label}_images.png"
     if os.path.exists(img_fn):
         continue
     cluster_labels = label_to_clusters[label]
@@ -552,7 +586,8 @@ for label, indices in tqdm(label_to_idx.items(), desc="Plotting Images", leave=F
     fig.suptitle(f"Label {label} Images")
     # plot clusters
     for i in unique_clusters:
-        cluster_indices = indices[cluster_labels == i]
+        # cluster_indices = indices[cluster_labels == i]
+        cluster_indices = np.array(label_to_dataset_idx[label])[cluster_labels == i]
         # select 10 random images from the cluster
         cluster_indices = np.random.choice(
             cluster_indices, size=min(len(cluster_indices), 10), replace=False
@@ -606,7 +641,7 @@ if os.path.exists(label_to_cluster_centroids_path):
         label_to_cluster_centroids = pickle.load(f)
 else:
     label_to_cluster_centroids = {}
-    for label, indices in tqdm(label_to_idx.items()):
+    for label, indices in tqdm(label_to_feat_idx.items()):
         _tmp = z_normalized_features[indices]
         cluster_labels = label_to_clusters[label]
         unique_clusters = sorted(list(set(cluster_labels)))
@@ -624,7 +659,12 @@ else:
 
 
 def predict_label(
-    image_feature, label_clusters, label_dbscan_params, label_idx, train_features
+    image_feature,
+    label_clusters,
+    label_dbscan_params,
+    label_idx,
+    train_features,
+    label_to_mds,
 ):
     """
     Predict the label of an image based on the normalized number of the clusters that the image could be a part of.
@@ -633,11 +673,12 @@ def predict_label(
     # find the number of clusters that the image could be a part of
     predicted_labels = []
     for label, clusters in label_clusters.items():
+        transformed_train_x, mds_obj = label_to_mds[label]
+        transformed_point = mds_obj.transform(image_feature)
         eps, _, _ = label_dbscan_params[label]
-        train_x = train_features[label_idx[label]]
-        cluster_features = train_x[clusters != -1]
+        cluster_features = transformed_train_x[clusters != -1]
         # calculate distance using euclidean distance
-        distances = np.linalg.norm(cluster_features - image_feature, axis=1)
+        distances = np.linalg.norm(cluster_features - transformed_point, axis=1)
         if np.min(distances) < eps:
             # get number of points whose distances are less than eps
             _tmp = np.sum(distances < eps)
@@ -711,8 +752,9 @@ for y_true, img_feature in tqdm(
         normalized_feat,
         label_to_clusters,
         label_to_dbscan_params,
-        label_to_idx,
+        label_to_feat_idx,
         features,
+        label_to_mds,
     )
     preds.append(y_pred)
 
