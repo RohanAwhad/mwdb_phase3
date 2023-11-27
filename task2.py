@@ -26,7 +26,7 @@ from tqdm import tqdm
 N_CLUSTERS = 5
 
 os.makedirs("artifacts", exist_ok=True)
-os.makedirs("outputs", exist_ok=True)
+os.makedirs("outputs/task_2", exist_ok=True)
 
 TORCH_HUB = "./models/"
 torch.set_grad_enabled(False)
@@ -327,10 +327,11 @@ else:
 
 
 # plot clusters in 2D MDS space
-
-for label, coordinates in label_to_mds.items():
+for label, coordinates in tqdm(
+    label_to_mds.items(), desc="Plotting Clusters", leave=False
+):
     # check if the image is already saved
-    img_fn = f"outputs/task2_label_{label}_clusters.png"
+    img_fn = f"outputs/task_2/task2_label_{label}_clusters.png"
     if os.path.exists(img_fn):
         continue
     cluster_labels = label_to_clusters[label]
@@ -351,3 +352,155 @@ for label, coordinates in label_to_mds.items():
     plt.legend(unique_clusters)
     plt.savefig(img_fn)
     plt.close()
+
+
+ODD_IMG_FEAT_PATH = "artifacts/odd_img_features.pkl"
+ODD_IMG_LABELS_PATH = "artifacts/odd_image_labels.pkl"
+if os.path.exists(ODD_IMG_FEAT_PATH):
+    odd_image_features = torch.load(ODD_IMG_FEAT_PATH)
+    trues = torch.load(ODD_IMG_LABELS_PATH)
+else:
+    odd_image_features = []
+    trues = []
+    for idx, (image, label) in tqdm(
+        enumerate(DATASET),
+        desc="Calculating Odd Image Features",
+        total=len(DATASET),
+        leave=False,
+    ):
+        if idx % 2 == 0:
+            continue  # Skipping even images
+
+        if image.mode != "RGB":
+            image = image.convert("RGB")
+        feature = extractor(image)
+        odd_image_features.append(feature.squeeze())
+        trues.append(label)
+
+    odd_image_features = torch.stack(odd_image_features)
+    trues = torch.tensor(trues)
+    torch.save(odd_image_features, ODD_IMG_FEAT_PATH)
+    torch.save(trues, ODD_IMG_LABELS_PATH)
+
+
+# for each cluster in each label, find the centroid
+label_to_cluster_centroids_path = (
+    f"artifacts/label_to_cluster_centroids_C_{N_CLUSTERS}.pkl"
+)
+if os.path.exists(label_to_cluster_centroids_path):
+    with open(label_to_cluster_centroids_path, "rb") as f:
+        label_to_cluster_centroids = pickle.load(f)
+else:
+    label_to_cluster_centroids = {}
+    for label, indices in tqdm(label_to_idx.items()):
+        print(f"Finding cluster centroids for label {label}...")
+        _tmp = z_normalized_features[indices]
+        cluster_labels = label_to_clusters[label]
+        unique_clusters = sorted(list(set(cluster_labels)))
+        centroids = []
+        for i in unique_clusters:
+            cluster_features = _tmp[cluster_labels == i]
+            centroids.append(np.mean(cluster_features, axis=0))
+        label_to_cluster_centroids[label] = np.stack(centroids)
+
+    # save label_to_cluster_centroids
+    with open(label_to_cluster_centroids_path, "wb") as f:
+        pickle.dump(label_to_cluster_centroids, f)
+
+
+def predict_label(image_feature, cluster_centroids):
+    """
+    Predict the label of an image based on the closest DBSCAN cluster centroid.
+
+    Parameters:
+    image_feature: ndarray
+        Feature vector of the image.
+    cluster_centroids: dict
+        A dictionary where keys are labels and values are arrays of centroids of clusters for that label.
+
+    Returns:
+    predicted_label: int or str
+        The predicted label for the image.
+    """
+
+    min_distance = float("inf")
+    predicted_label = None
+
+    for label, ccentroids in cluster_centroids.items():
+        # calculate distance using euclidean distance
+        distances = np.linalg.norm(ccentroids - image_feature, axis=1)
+
+        closest_cluster_distance = np.min(distances)
+
+        if closest_cluster_distance < min_distance:
+            min_distance = closest_cluster_distance
+            predicted_label = label
+
+    return predicted_label
+
+
+# predict labels for odd images
+preds = []
+for y_true, feature in tqdm(
+    zip(odd_image_features, trues),
+    desc="Predicting Labels",
+    total=len(odd_image_features),
+    leave=False,
+):
+    y_pred = predict_label(feature.numpy(), label_to_cluster_centroids)
+    preds.append(y_pred)
+
+preds = torch.tensor(preds)
+
+# Calculating per-label metrics
+per_label_metrics = {}
+
+for label in tqdm(
+    set(label_to_cluster_centroids.keys()),
+    desc="Calculating Per-Label Metrics",
+    leave=False,
+):
+    tp = torch.sum((preds == label) & (trues == label))
+    fp = torch.sum((preds == label) & (trues != label))
+    fn = torch.sum((preds != label) & (trues == label))
+    precision = tp / (tp + fp)
+    recall = tp / (tp + fn)
+    f1_score = 2 * precision * recall / (precision + recall)
+    per_label_metrics[label] = {
+        "precision": precision,
+        "recall": recall,
+        "f1_score": f1_score,
+    }
+
+# Calculating overall metrics
+tp = torch.sum(preds == trues)
+fp = torch.sum(preds != trues)
+precision = tp / (tp + fp)
+accuracy = tp / len(preds)
+
+
+with open(f"outputs/task2_C_{N_CLUSTERS}.csv", "w") as f:
+    f.write("label,precision,recall,f1_score\n")
+    for label, metrics in per_label_metrics.items():
+        f.write(
+            f'{label},{metrics["precision"]},{metrics["recall"]},{metrics["f1_score"]}\n'
+        )
+
+    f.write(f"\noverall accuracy,{accuracy}\n")
+
+# pretty print metrics
+print("per-label metrics:")
+print(
+    f'{"label".rjust(6)}{"precision".rjust(12)}{"recall".rjust(12)}{"f1_score".rjust(12)}'
+)
+for label in sorted(per_label_metrics.keys()):
+    metrics = per_label_metrics[label]
+    print(
+        f'{label:6d}{metrics["precision"]:12.3f}{metrics["recall"]:12.3f}{metrics["f1_score"]:12.3f}'
+    )
+
+print()
+print(f"overall accuracy: {accuracy:0.3f}")
+
+
+print(preds)
