@@ -275,7 +275,9 @@ else:
             for j in range(len(_tmp)):
                 distance_matrix[i, j] = np.linalg.norm(_tmp[i] - _tmp[j])
 
-        eps_range = (np.min(distance_matrix), np.max(distance_matrix))
+        # eps_range = (np.min(distance_matrix), np.max(distance_matrix))
+        # set eps_range to first and third quartile
+        eps_range = np.percentile(distance_matrix, [25, 75])
         print(f"eps_range: {eps_range}")
 
         # find eps and min_samples
@@ -377,6 +379,39 @@ for label, coordinates in tqdm(
         )
     # add legend
     plt.legend(unique_clusters)
+    plt.savefig(img_fn)
+    plt.close()
+
+# for each cluster, plot the images
+for label, indices in tqdm(label_to_idx.items(), desc="Plotting Images", leave=False):
+    indices = np.array(indices)
+    # check if the image is already saved
+    img_fn = f"outputs/task_2/task2_label_{label}_images.png"
+    if os.path.exists(img_fn):
+        continue
+    cluster_labels = label_to_clusters[label]
+    unique_clusters = sorted(list(set(cluster_labels)))
+    if -1 in unique_clusters:
+        unique_clusters.remove(-1)
+    fig, axs = plt.subplots(len(unique_clusters), 10, figsize=(10, 10))
+    # for all axes, remove axis
+    for ax in axs.flatten():
+        ax.axis("off")
+    fig.suptitle(f"Label {label} Images")
+    # plot clusters
+    for i in unique_clusters:
+        cluster_indices = indices[cluster_labels == i]
+        # select 10 random images from the cluster
+        cluster_indices = np.random.choice(
+            cluster_indices, size=min(len(cluster_indices), 10), replace=False
+        )
+        for j, idx in enumerate(cluster_indices):
+            image = DATASET[idx][0]
+            ax = axs[i, j] if len(unique_clusters) > 1 else axs[j]
+            ax.imshow(image)
+            ax.axis("off")
+            # have cluster id as axis label
+            ax.set_title(f"Cluster {i}")
     plt.savefig(img_fn)
     plt.close()
 
