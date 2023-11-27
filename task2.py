@@ -211,6 +211,7 @@ def random_search_dbscan_params(
     best_eps = None
     best_min_samples = None
     best_diff = float("inf")
+    best_noise = float("inf")
 
     for _ in range(iterations):
         eps = random.uniform(*eps_range)
@@ -218,23 +219,47 @@ def random_search_dbscan_params(
 
         labels = dbscan(X, eps=eps, min_samples=min_samples)
         num_clusters = len(set(labels)) - (1 if -1 in labels else 0)
+        # get count of -1 labels
+        num_noise = np.sum(labels == -1)
 
         diff = abs(num_clusters - target_clusters)
         if diff < best_diff:
-            best_eps, best_min_samples, best_diff = eps, min_samples, diff
+            best_eps, best_min_samples, best_diff, best_noise = (
+                eps,
+                min_samples,
+                diff,
+                num_noise,
+            )
         elif diff == best_diff:
-            if num_clusters > target_clusters:
-                best_eps, best_min_samples, best_diff = eps, min_samples, diff
-            if min_samples > best_min_samples:
-                best_eps, best_min_samples, best_diff = eps, min_samples, diff
+            if num_noise < best_noise:
+                best_eps, best_min_samples, best_diff, best_noise = (
+                    eps,
+                    min_samples,
+                    diff,
+                    num_noise,
+                )
+            elif num_clusters > target_clusters:
+                best_eps, best_min_samples, best_diff, best_noise = (
+                    eps,
+                    min_samples,
+                    diff,
+                    num_noise,
+                )
+            elif min_samples > best_min_samples:
+                best_eps, best_min_samples, best_diff, best_noise = (
+                    eps,
+                    min_samples,
+                    diff,
+                    num_noise,
+                )
 
     return best_eps, best_min_samples
 
 
-# z_normalized_features, z_mean, z_std = z_score_normalization(features.numpy())
-z_normalized_features = features
-z_mean = 0
-z_std = 1
+z_normalized_features, z_mean, z_std = z_score_normalization(features.numpy())
+# z_normalized_features = features.numpy()
+# z_mean = 0
+# z_std = 1
 label_to_dbscan_params_path = f"artifacts/label_to_dbscan_params_C_{N_CLUSTERS}.pkl"
 if os.path.exists(label_to_dbscan_params_path):
     with open(label_to_dbscan_params_path, "rb") as f:
@@ -251,6 +276,7 @@ else:
                 distance_matrix[i, j] = np.linalg.norm(_tmp[i] - _tmp[j])
 
         eps_range = (np.min(distance_matrix), np.max(distance_matrix))
+        print(f"eps_range: {eps_range}")
 
         # find eps and min_samples
         eps, min_samples = None, None
@@ -506,4 +532,8 @@ print()
 print(f"overall accuracy: {accuracy:0.3f}")
 
 
-print(preds)
+# # print all predicted labels
+# print("Predicted Labels:")
+# print(f'{"image_id".rjust(8)}{"predicted_label".rjust(16)}')
+# for image_id, pred in enumerate(preds[:1000]):
+#     print(f"{(image_id*2)+1:8d}{pred:16d}")
