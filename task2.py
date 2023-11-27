@@ -495,10 +495,10 @@ def predict_label(image_feature, cluster_centroids):
         distances.append(distances_)
         predicted_labels.append(label)
 
-    # distances = np.array(distances)
-    # predicted_labels = np.array(predicted_labels)
+    distances = np.array(distances)
+    predicted_labels = np.array(predicted_labels)
 
-    # return predicted_labels[np.argmin(distances)]
+    return predicted_labels[np.argmin(distances)]
 
     # take the top 10 smallest distances
     top_10_indices = np.argsort(distances)[:10]
