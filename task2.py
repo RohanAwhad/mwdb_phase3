@@ -9,15 +9,19 @@ Task 2: Implement a program which,
 The system should also output per-label precision, recall, and F1-score values as well as output an overall accuracy value.
 
 """
-import queue
+import pickle
 import numpy as np
 import os
+import random
 import torch
 import torchvision
 
 from collections import defaultdict
 from torchvision.transforms import functional as TF
 from tqdm import tqdm
+
+# N_CLUSTERS = int(input("Enter number of clusters: "))
+N_CLUSTERS = 5
 
 os.makedirs("artifacts", exist_ok=True)
 os.makedirs("outputs", exist_ok=True)
@@ -177,6 +181,174 @@ def dbscan(X, eps, min_samples):
     return labels
 
 
+def random_search_dbscan_params(
+    X, target_clusters, iterations=100, eps_range=(0.1, 1.0), min_samples_range=(2, 10)
+):
+    """
+    Perform a random search to find suitable DBSCAN parameters for a target number of clusters.
+
+    Parameters:
+    X: ndarray
+        Input data for clustering.
+    target_clusters: int
+        Desired number of clusters.
+    iterations: int
+        Number of iterations for random search.
+    eps_range: tuple
+        Range (min, max) for eps.
+    min_samples_range: tuple
+        Range (min, max) for min_samples.
+
+    Returns:
+    best_eps: float
+        Best found eps value.
+    best_min_samples: int
+        Best found min_samples value.
+    """
+
+    best_eps = None
+    best_min_samples = None
+    best_diff = float("inf")
+
+    for _ in range(iterations):
+        eps = random.uniform(*eps_range)
+        min_samples = random.randint(*min_samples_range)
+
+        labels = dbscan(X, eps=eps, min_samples=min_samples)
+        num_clusters = len(set(labels)) - (1 if -1 in labels else 0)
+
+        diff = abs(num_clusters - target_clusters)
+        if diff < best_diff:
+            best_eps, best_min_samples, best_diff = eps, min_samples, diff
+        elif diff == best_diff:
+            if num_clusters > target_clusters:
+                best_eps, best_min_samples, best_diff = eps, min_samples, diff
+            if min_samples > best_min_samples:
+                best_eps, best_min_samples, best_diff = eps, min_samples, diff
+
+    return best_eps, best_min_samples
+
+
 z_normalized_features = z_score_normalization(features.numpy())
-_tmp = z_normalized_features[label_to_idx[0]]
-my_clabels = dbscan(_tmp, eps=20, min_samples=2)
+label_to_dbscan_params_path = f"artifacts/label_to_dbscan_params_C_{N_CLUSTERS}.pkl"
+if os.path.exists(label_to_dbscan_params_path):
+    with open(label_to_dbscan_params_path, "rb") as f:
+        label_to_dbscan_params = pickle.load(f)
+else:
+    label_to_dbscan_params = {}
+    for label, indices in tqdm(label_to_idx.items()):
+        print(f"Finding DBSCAN parameters for label {label}...")
+        _tmp = z_normalized_features[indices]
+
+        # find range of eps
+        distance_matrix = np.zeros((len(_tmp), len(_tmp)))
+        for i in range(len(_tmp)):
+            for j in range(len(_tmp)):
+                distance_matrix[i, j] = np.linalg.norm(_tmp[i] - _tmp[j])
+
+        eps_range = (np.min(distance_matrix), np.max(distance_matrix))
+
+        # find eps and min_samples
+        eps, min_samples = None, None
+        while eps is None and min_samples is None:
+            eps, min_samples = random_search_dbscan_params(
+                _tmp,
+                target_clusters=N_CLUSTERS,
+                eps_range=eps_range,
+                min_samples_range=(3, 15),
+            )
+        label_to_dbscan_params[label] = (eps, min_samples, N_CLUSTERS)
+
+    # save label_to_dbscan_params
+    with open(label_to_dbscan_params_path, "wb") as f:
+        pickle.dump(label_to_dbscan_params, f)
+
+# find clusters for each label
+label_to_clusters_path = f"artifacts/label_to_clusters_C_{N_CLUSTERS}.pkl"
+if os.path.exists(label_to_clusters_path):
+    with open(label_to_clusters_path, "rb") as f:
+        label_to_clusters = pickle.load(f)
+else:
+    label_to_clusters = {}
+    for label, indices in tqdm(label_to_idx.items()):
+        print(f"Finding clusters for label {label}...")
+        _tmp = z_normalized_features[indices]
+        eps, min_samples, _ = label_to_dbscan_params[label]
+        labels = dbscan(_tmp, eps=eps, min_samples=min_samples)
+        label_to_clusters[label] = labels
+
+    # save label_to_clusters
+    with open(label_to_clusters_path, "wb") as f:
+        pickle.dump(label_to_clusters, f)
+
+
+# for each label-specific cluster, reduce dimensions using MDS (Multi-Dimensional Scaling)
+def mds(distance_matrix, dimensions=2):
+    n = distance_matrix.shape[0]
+    centering_matrix = np.eye(n) - np.ones((n, n)) / n
+    B = -0.5 * centering_matrix @ distance_matrix**2 @ centering_matrix
+
+    eigvals, eigvecs = np.linalg.eigh(B)
+    idx = np.argsort(eigvals)[::-1]
+    eigvals = eigvals[idx]
+    eigvecs = eigvecs[:, idx]
+
+    eigvals = np.sqrt(np.abs(eigvals[:dimensions]))
+    eigvecs = eigvecs[:, :dimensions]
+    coordinates = eigvecs * eigvals
+    return coordinates
+
+
+label_to_mds_path = f"artifacts/label_to_mds_C_{N_CLUSTERS}.pkl"
+if os.path.exists(label_to_mds_path):
+    with open(label_to_mds_path, "rb") as f:
+        label_to_mds = pickle.load(f)
+else:
+    label_to_mds = {}
+    for label, indices in tqdm(label_to_idx.items()):
+        print(f"Finding MDS coordinates for label {label}...")
+        _tmp = z_normalized_features[indices]
+
+        # find distance matrix
+        distance_matrix = np.zeros((len(_tmp), len(_tmp)))
+        for i in range(len(_tmp)):
+            for j in range(len(_tmp)):
+                distance_matrix[i, j] = np.linalg.norm(_tmp[i] - _tmp[j])
+
+        # find coordinates
+        coordinates = mds(distance_matrix)
+        label_to_mds[label] = coordinates
+
+    # save label_to_mds
+    with open(label_to_mds_path, "wb") as f:
+        pickle.dump(label_to_mds, f)
+
+
+# plot clusters in 2D MDS space
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+cntr = 0
+for label, coordinates in label_to_mds.items():
+    cluster_labels = label_to_clusters[label]
+    unique_clusters = sorted(list(set(cluster_labels)))
+    plt.figure(figsize=(10, 10))
+    plt.title(f"Label {label} Clusters")
+    # for each cluster, select a color
+    colors = sns.color_palette("bright", len(unique_clusters))
+    # plot clusters
+    for i in unique_clusters:
+        cluster_coordinates = coordinates[cluster_labels == i]
+        plt.scatter(
+            cluster_coordinates[:, 0],
+            cluster_coordinates[:, 1],
+            color=colors[i],
+        )
+    # add legend
+    plt.legend(unique_clusters)
+    plt.savefig(f"outputs/task2_label_{label}_clusters.png")
+    plt.close()
+
+    cntr += 1
+    if cntr == 3:
+        break
