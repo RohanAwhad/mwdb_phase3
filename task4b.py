@@ -11,6 +11,8 @@ import math
 import config
 import helper
 import argparse
+from PIL import Image
+import io
 
 from feature_descriptor import FeatureDescriptor
 
@@ -80,14 +82,17 @@ def display_images_grid(image_ids, dataset, grid_cols=3):
     plt.show()
 
 
-def display_images(query_image_id, top_k_images):
+def display_images(query_image, top_k_images):
+
     # Create a figure with k+1 subplots (for query image and top k images)
     num_images = len(top_k_images) + 1
     fig, axes = plt.subplots(1, num_images, figsize=(15, 5))
 
-    query_image, _ = dataset[query_image_id]
-    if query_image.mode != "RGB":
-        query_image = query_image.convert("RGB")
+
+    # query_image, _ = dataset[query_image_id]
+    # if query_image.mode != "RGB": query_image = query_image.convert('RGB')
+
+
 
     # Display the query image
     axes[0].imshow(query_image)
@@ -126,11 +131,30 @@ dataset = torchvision.datasets.Caltech101(DATA_DIR, download=True)
 with open("./outputs/lsh.pkl", "rb") as file:
     loaded_lsh = pickle.load(file)
 
+if(query_image==-1): 
+    image_path = input("Enter the path to the image: ")
+    try:
+        # Open the image using PIL
+        with open(image_path, 'rb') as file:
+            pil_image = Image.open(io.BytesIO(file.read()))
 
-image, _ = dataset[query_image]
-if image.mode != "RGB":
-    image = image.convert("RGB")
-image_vector = feature_descriptor.extract_features(image, "resnet_fc")
+
+        # Display some information about the image
+        print(f"Image format: {pil_image.format}")
+        print(f"Image mode: {pil_image.mode}")
+        print(f"Image size: {pil_image.size}")
+
+        image =  pil_image
+
+    except Exception as e:
+        print(f"Error: {e}")
+        
+
+else: 
+    image,_ = dataset[query_image]
+if image.mode != "RGB": image = image.convert('RGB')
+image_vector = feature_descriptor.extract_features(image, 'resnet_fc')
+
 
 
 k_near_images, total_images, unique_images = find_k_nearest(
@@ -142,4 +166,8 @@ k_near_images, total_images, unique_images = find_k_nearest(
 # display_images_grid(near_images, dataset)
 print("Total Images: ", total_images)
 print("Unique Images: ", unique_images)
-display_images(query_image, k_near_images)
+if(len(k_near_images)==0): 
+    print("No near image found using LSH")   
+else:
+    display_images(image,k_near_images)
+
