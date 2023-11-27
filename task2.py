@@ -692,11 +692,12 @@ def predict_label(
     all_distances = []
     all_labels = []
     for label, clusters in label_clusters.items():
+        eps = label_dbscan_params[label][0]
         transformed_train_x, mds_obj = label_to_mds[label]
         transformed_point = mds_obj.transform(image_feature)
         cluster_features = transformed_train_x[clusters != -1]
-        # calculate distance using euclidean distance
-        distances = np.linalg.norm(cluster_features - transformed_point, axis=1)
+        # calculate distance using euclidean distance, normalize by eps
+        distances = np.linalg.norm(cluster_features - transformed_point, axis=1) / eps
         all_distances.append(distances)
         all_labels.extend([label] * len(distances))
 
@@ -711,6 +712,30 @@ def predict_label(
     label_counts = Counter(top_10_labels)
     predicted_label = label_counts.most_common(1)[0][0]
     print(predicted_label)
+
+    # predicted_label = None
+    # all_distances = []
+    # all_labels = []
+    # for label, clusters in label_clusters.items():
+    #     transformed_train_x, mds_obj = label_to_mds[label]
+    #     transformed_point = mds_obj.transform(image_feature)
+    #     cluster_features = transformed_train_x[clusters != -1]
+    #     # calculate distance using euclidean distance
+    #     distances = np.linalg.norm(cluster_features - transformed_point, axis=1)
+    #     all_distances.append(distances)
+    #     all_labels.extend([label] * len(distances))
+
+    # all_distances = np.concatenate(all_distances)
+    # all_labels = np.array(all_labels)
+
+    # # argsort and select top 10 labels
+    # top_10_indices = np.argsort(all_distances)[:10]
+    # top_10_labels = all_labels[top_10_indices]
+
+    # # find the most common label
+    # label_counts = Counter(top_10_labels)
+    # predicted_label = label_counts.most_common(1)[0][0]
+    # print(predicted_label)
 
     # # find the number of clusters that the image could be a part of
     # predicted_labels = []
