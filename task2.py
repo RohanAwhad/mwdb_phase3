@@ -212,6 +212,7 @@ def random_search_dbscan_params(
     best_min_samples = None
     best_diff = float("inf")
     best_noise = float("inf")
+    best_score = float("-inf")
 
     for _ in range(iterations):
         eps = random.uniform(*eps_range)
@@ -219,39 +220,177 @@ def random_search_dbscan_params(
 
         labels = dbscan(X, eps=eps, min_samples=min_samples)
         num_clusters = len(set(labels)) - (1 if -1 in labels else 0)
+        best_eps, best_min_samples, best_score, best_diff = calculate_best_params(
+            X,
+            labels,
+            num_clusters,
+            target_clusters,
+            eps,
+            min_samples,
+            best_eps,
+            best_min_samples,
+            best_score,
+            best_diff,
+        )
         # get count of -1 labels
         num_noise = np.sum(labels == -1)
 
-        diff = abs(num_clusters - target_clusters)
-        if diff < best_diff:
-            best_eps, best_min_samples, best_diff, best_noise = (
+        # diff = abs(num_clusters - target_clusters)
+        # if diff < best_diff:
+        #     best_eps, best_min_samples, best_diff, best_noise = (
+        #         eps,
+        #         min_samples,
+        #         diff,
+        #         num_noise,
+        #     )
+        # elif diff == best_diff:
+        #     if num_noise < best_noise:
+        #         best_eps, best_min_samples, best_diff, best_noise = (
+        #             eps,
+        #             min_samples,
+        #             diff,
+        #             num_noise,
+        #         )
+        #     elif num_clusters > target_clusters:
+        #         best_eps, best_min_samples, best_diff, best_noise = (
+        #             eps,
+        #             min_samples,
+        #             diff,
+        #             num_noise,
+        #         )
+        #     elif min_samples > best_min_samples:
+        #         best_eps, best_min_samples, best_diff, best_noise = (
+        #             eps,
+        #             min_samples,
+        #             diff,
+        #             num_noise,
+        #         )
+
+    return best_eps, best_min_samples
+
+
+from sklearn.metrics import silhouette_score
+
+
+def calculate_best_params(
+    X,
+    labels,
+    num_clusters,
+    target_clusters,
+    eps,
+    min_samples,
+    best_eps,
+    best_min_samples,
+    best_score,
+    best_diff,
+):
+    diff = abs(num_clusters - target_clusters)
+    if diff < best_diff:
+        best_eps, best_min_samples, best_diff = (
+            eps,
+            min_samples,
+            diff,
+        )
+
+    if num_clusters > 1:  # Silhouette score is only valid if num_clusters > 1
+        try:
+            score = silhouette_score(X, labels)
+        except ValueError:
+            return best_eps, best_min_samples, best_score, best_diff
+
+        if diff == best_diff and score > best_score:
+            best_eps, best_min_samples, best_score, best_diff = (
                 eps,
                 min_samples,
+                score,
                 diff,
-                num_noise,
             )
-        elif diff == best_diff:
-            if num_noise < best_noise:
-                best_eps, best_min_samples, best_diff, best_noise = (
-                    eps,
-                    min_samples,
-                    diff,
-                    num_noise,
-                )
-            elif num_clusters > target_clusters:
-                best_eps, best_min_samples, best_diff, best_noise = (
-                    eps,
-                    min_samples,
-                    diff,
-                    num_noise,
-                )
-            elif min_samples > best_min_samples:
-                best_eps, best_min_samples, best_diff, best_noise = (
-                    eps,
-                    min_samples,
-                    diff,
-                    num_noise,
-                )
+
+    return best_eps, best_min_samples, best_score, best_diff
+
+
+def grid_search_dbscan_params(
+    X, target_clusters, eps_range=(0.1, 1.0), min_samples_range=(2, 10), iterations=100
+):
+    """
+    Perform a grid search to find suitable DBSCAN parameters for a target number of clusters.
+
+    Parameters:
+    X: ndarray
+        Input data for clustering.
+    target_clusters: int
+        Desired number of clusters.
+    eps_range: tuple
+        Range (min, max) for eps.
+    min_samples_range: tuple
+        Range (min, max) for min_samples.
+
+    Returns:
+    best_eps: float
+        Best found eps value.
+    best_min_samples: int
+        Best found min_samples value.
+    """
+
+    best_eps = None
+    best_min_samples = None
+    best_diff = float("inf")
+    best_score = float("-inf")
+
+    min_samples_values = list(range(min_samples_range[0], min_samples_range[1] + 1))
+    eps_values = np.linspace(
+        eps_range[0], eps_range[1], num=iterations // len(min_samples_values)
+    )
+
+    # Call the function inside the loop
+    for eps in eps_values:
+        for min_samples in min_samples_values:
+            labels = dbscan(X, eps=eps, min_samples=min_samples)
+            num_clusters = len(set(labels)) - (1 if -1 in labels else 0)
+
+            best_eps, best_min_samples, best_score, best_diff = calculate_best_params(
+                X,
+                labels,
+                num_clusters,
+                target_clusters,
+                eps,
+                min_samples,
+                best_eps,
+                best_min_samples,
+                best_score,
+                best_diff,
+            )
+
+            # # diff = abs(num_clusters - target_clusters)
+            # # if diff < best_diff:
+            # #     best_eps, best_min_samples, best_diff, best_noise = (
+            # #         eps,
+            # #         min_samples,
+            # #         diff,
+            # #         num_noise,
+            # #     )
+            # # elif diff == best_diff:
+            #     if num_noise < best_noise:
+            #         best_eps, best_min_samples, best_diff, best_noise = (
+            #             eps,
+            #             min_samples,
+            #             diff,
+            #             num_noise,
+            #         )
+            #     elif num_clusters > target_clusters and num_noise == best_noise:
+            #         best_eps, best_min_samples, best_diff, best_noise = (
+            #             eps,
+            #             min_samples,
+            #             diff,
+            #             num_noise,
+            #         )
+            #     elif min_samples > best_min_samples and num_noise == best_noise:
+            #         best_eps, best_min_samples, best_diff, best_noise = (
+            #             eps,
+            #             min_samples,
+            #             diff,
+            #             num_noise,
+            #         )
 
     return best_eps, best_min_samples
 
@@ -260,7 +399,9 @@ z_normalized_features, z_mean, z_std = z_score_normalization(features.numpy())
 # z_normalized_features = features.numpy()
 # z_mean = 0
 # z_std = 1
-label_to_dbscan_params_path = f"artifacts/label_to_dbscan_params_C_{N_CLUSTERS}.pkl"
+label_to_dbscan_params_path = (
+    f"artifacts/label_to_dbscan_params_grid_search_C_{N_CLUSTERS}.pkl"
+)
 if os.path.exists(label_to_dbscan_params_path):
     with open(label_to_dbscan_params_path, "rb") as f:
         label_to_dbscan_params = pickle.load(f)
@@ -275,20 +416,30 @@ else:
             for j in range(len(_tmp)):
                 distance_matrix[i, j] = np.linalg.norm(_tmp[i] - _tmp[j])
 
-        # eps_range = (np.min(distance_matrix), np.max(distance_matrix))
+        eps_range = (np.min(distance_matrix), np.max(distance_matrix))
         # set eps_range to first and third quartile
-        eps_range = np.percentile(distance_matrix, [25, 75])
+        # eps_range = np.percentile(distance_matrix, [25, 75])
         print(f"eps_range: {eps_range}")
+
+        min_samples_range = (2, 10)
+        iterations = 500
 
         # find eps and min_samples
         eps, min_samples = None, None
+        eps, min_samples = grid_search_dbscan_params(
+            _tmp,
+            target_clusters=N_CLUSTERS,
+            eps_range=eps_range,
+            min_samples_range=min_samples_range,
+            iterations=iterations,
+        )
         while eps is None and min_samples is None:
             eps, min_samples = random_search_dbscan_params(
                 _tmp,
                 target_clusters=N_CLUSTERS,
                 eps_range=eps_range,
-                min_samples_range=(3, 30),
-                iterations=500,
+                min_samples_range=min_samples_range,
+                iterations=iterations,
             )
         label_to_dbscan_params[label] = (eps, min_samples, N_CLUSTERS)
 
@@ -366,7 +517,8 @@ for label, coordinates in tqdm(
     cluster_labels = label_to_clusters[label]
     unique_clusters = sorted(list(set(cluster_labels)))
     plt.figure(figsize=(10, 10))
-    plt.title(f"Label {label} Clusters")
+    eps, min_samples, _ = label_to_dbscan_params[label]
+    plt.title(f"Label {label} Clusters | eps: {eps:.2f} | min_samples: {min_samples}")
     # for each cluster, select a color
     colors = sns.color_palette("bright", len(unique_clusters))
     # plot clusters
@@ -471,47 +623,77 @@ else:
         pickle.dump(label_to_cluster_centroids, f)
 
 
-def predict_label(image_feature, cluster_centroids):
+def predict_label(
+    image_feature, label_clusters, label_dbscan_params, label_idx, train_features
+):
     """
-    Predict the label of an image based on the closest DBSCAN cluster centroid.
-
-    Parameters:
-    image_feature: ndarray
-        Feature vector of the image.
-    cluster_centroids: dict
-        A dictionary where keys are labels and values are arrays of centroids of clusters for that label.
-
-    Returns:
-    predicted_label: int or str
-        The predicted label for the image.
+    Predict the label of an image based on the normalized number of the clusters that the image could be a part of.
     """
 
-    distances = []
+    # find the number of clusters that the image could be a part of
     predicted_labels = []
-
-    for label, ccentroids in cluster_centroids.items():
+    for label, clusters in label_clusters.items():
+        eps, _, _ = label_dbscan_params[label]
+        train_x = train_features[label_idx[label]]
+        cluster_features = train_x[clusters != -1]
         # calculate distance using euclidean distance
-        distances_ = np.mean(np.linalg.norm(ccentroids - image_feature, axis=1))
-        distances.append(distances_)
-        predicted_labels.append(label)
+        distances = np.linalg.norm(cluster_features - image_feature, axis=1)
+        if np.min(distances) < eps:
+            # get number of points whose distances are less than eps
+            _tmp = np.sum(distances < eps)
+            predicted_labels.append((label, _tmp))
+        else:
+            predicted_labels.append((label, 0))
 
-    distances = np.array(distances)
-    predicted_labels = np.array(predicted_labels)
+    return sorted(predicted_labels, key=lambda x: x[1], reverse=True)[0][0]
 
-    return predicted_labels[np.argmin(distances)]
+    # # find the number of clusters that the image could be a part of
+    # predicted_labels = []
+    # for label, clusters in label_clusters.items():
+    #     eps, _, _ = label_dbscan_params[label]
+    #     train_x = train_features[label_idx[label]]
+    #     _tmp = 0
+    #     for i in set(clusters):
+    #         if i == -1:
+    #             continue
 
-    # take the top 10 smallest distances
-    top_10_indices = np.argsort(distances)[:10]
-    print(top_10_indices)
+    #         cluster_features = train_x[clusters == i]
+    #         # calculate distance using euclidean distance
+    #         distances = np.linalg.norm(cluster_features - image_feature, axis=1)
+    #         if np.min(distances) < eps:
+    #             _tmp += 1
 
-    # get the predicted labels for the top 10 smallest distances
-    top_10_predicted_labels = np.array(predicted_labels)[top_10_indices]
-    print(top_10_predicted_labels)
-    # input()
+    #     predicted_labels.append((label, _tmp))
 
-    # find the most common label
-    label_counts = Counter(top_10_predicted_labels)
-    predicted_label = label_counts.most_common(1)[0][0]
+    # return sorted(predicted_labels, key=lambda x: x[1], reverse=True)[0][0]
+    # find the number of clusters that the image could be a part of
+
+    # distances = []
+    # predicted_labels = []
+
+    # for label, ccentroids in cluster_centroids.items():
+    #     # calculate distance using euclidean distance
+    #     distances_ = np.mean(np.linalg.norm(ccentroids - image_feature, axis=1))
+    #     distances.append(distances_)
+    #     predicted_labels.append(label)
+
+    # distances = np.array(distances)
+    # predicted_labels = np.array(predicted_labels)
+
+    # return predicted_labels[np.argmin(distances)]
+
+    # # take the top 10 smallest distances
+    # top_10_indices = np.argsort(distances)[:10]
+    # print(top_10_indices)
+
+    # # get the predicted labels for the top 10 smallest distances
+    # top_10_predicted_labels = np.array(predicted_labels)[top_10_indices]
+    # print(top_10_predicted_labels)
+    # # input()
+
+    # # find the most common label
+    # label_counts = Counter(top_10_predicted_labels)
+    # predicted_label = label_counts.most_common(1)[0][0]
 
     return predicted_label
 
@@ -525,7 +707,13 @@ for y_true, img_feature in tqdm(
     leave=False,
 ):
     normalized_feat = (img_feature.numpy() - z_mean) / z_std
-    y_pred = predict_label(normalized_feat, label_to_cluster_centroids)
+    y_pred = predict_label(
+        normalized_feat,
+        label_to_clusters,
+        label_to_dbscan_params,
+        label_to_idx,
+        features,
+    )
     preds.append(y_pred)
 
 preds = torch.tensor(preds)
