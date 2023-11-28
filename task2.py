@@ -72,7 +72,33 @@ class FeatureExtractor:
         return avgpool_features
 
 
+class SVD:
+    def __init__(self):
+        self.components_ = None
+
+    def fit(self, A: torch.Tensor, K: int):
+        eigen_values2, V = map(torch.tensor, np.linalg.eig(A.T @ A))
+        tmp_2, v_tmp = [], []
+        for ev, v in sorted(zip(eigen_values2, V.T), key=lambda x: x[0], reverse=True):
+            tmp_2.append(ev)
+            v_tmp.append(v)
+
+        eigen_values2, V = torch.tensor(tmp_2), torch.stack(v_tmp).T
+        eigen_values2, V = eigen_values2[:K], V[:, :K]
+        self.components_ = V.T
+
+    def transform(self, feats: torch.Tensor):
+        if feats.ndim == 1:
+            feats = feats.unsqueeze(0)
+        return feats @ self.components_.T
+
+    def fit_transform(self, A: torch.Tensor, K: int):
+        self.fit(A, K)
+        return self.transform(A)
+
+
 extractor = FeatureExtractor()
+svd = SVD()
 
 if os.path.exists("artifacts/resnet50_avgpool_features.pkl"):
     features = torch.load("artifacts/resnet50_avgpool_features.pkl")
@@ -101,6 +127,12 @@ else:
     torch.save(labels, "artifacts/labels.pkl")
     torch.save(image_ids, "artifacts/image_ids.pkl")
 
+LATENT_FEAT_PATH = "artifacts/resnet50_avgpool_features_svd_128.pkl"
+if os.path.exists(LATENT_FEAT_PATH):
+    features = torch.load(LATENT_FEAT_PATH)
+else:
+    features = svd.fit_transform(features, K=128)
+    torch.save(features, LATENT_FEAT_PATH)
 
 label_to_feat_idx = defaultdict(list)
 for idx, label in enumerate(labels):
@@ -272,7 +304,6 @@ def random_search_dbscan_params(
         #         )
 
     return best_eps, best_min_samples
-
 
 
 from sklearn.metrics import silhouette_score
@@ -714,7 +745,6 @@ def predict_label(
     # find the most common label
     label_counts = Counter(top_10_labels)
     predicted_label = label_counts.most_common(1)[0][0]
-
 
     # predicted_label = None
     # all_distances = []
