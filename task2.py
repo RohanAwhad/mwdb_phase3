@@ -27,7 +27,7 @@ N_CLUSTERS = int(input("Enter number of clusters: "))
 
 os.makedirs("artifacts", exist_ok=True)
 os.makedirs("outputs/task_2", exist_ok=True)
-os.makedirs("outputs/task_2_svd_128_space", exist_ok=True)
+os.makedirs(f"outputs/task_2_svd_128_space_C_{N_CLUSTERS}", exist_ok=True)
 
 TORCH_HUB = "./models/"
 torch.set_grad_enabled(False)
@@ -140,10 +140,10 @@ else:
     torch.save(image_ids, "artifacts/image_ids.pkl")
 
 if os.path.exists(LATENT_FEAT_PATH):
-    features = torch.load(LATENT_FEAT_PATH)
+    features, svd = torch.load(LATENT_FEAT_PATH)
 else:
     features = svd.fit_transform(features, K=128)
-    torch.save(features, LATENT_FEAT_PATH)
+    torch.save((features, svd), LATENT_FEAT_PATH)
 
 label_to_feat_idx = defaultdict(list)
 for idx, label in enumerate(labels):
@@ -594,9 +594,13 @@ for label, indices in tqdm(
     label_to_feat_idx.items(), desc="Plotting Clusters", leave=False
 ):
     _tmp = z_normalized_features[indices]
-    coordinates = mds(_tmp)
+    # calculate distances between the _tmp points
+    distance_matrix = np.linalg.norm(_tmp[:, np.newaxis] - _tmp, axis=2)
+    coordinates = mds(distance_matrix)
     # check if the image is already saved
-    img_fn = f"outputs/task_2_svd_128_space/task2_label_{label}_clusters.png"
+    img_fn = (
+        f"outputs/task_2_svd_128_space_C_{N_CLUSTERS}/task2_label_{label}_clusters.png"
+    )
     if os.path.exists(img_fn):
         continue
     cluster_labels = label_to_clusters[label]
@@ -625,7 +629,9 @@ for label, indices in tqdm(
 ):
     indices = np.array(indices)
     # check if the image is already saved
-    img_fn = f"outputs/task_2_svd_128_space/task2_label_{label}_images.png"
+    img_fn = (
+        f"outputs/task_2_svd_128_space_C_{N_CLUSTERS}/task2_label_{label}_images.png"
+    )
     if os.path.exists(img_fn):
         continue
     cluster_labels = label_to_clusters[label]
