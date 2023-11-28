@@ -19,12 +19,11 @@ import torch
 import torchvision
 
 from collections import Counter, defaultdict
-from sklearn.metrics import silhouette_score
 from torchvision.transforms import functional as TF
 from tqdm import tqdm
 
-# N_CLUSTERS = int(input("Enter number of clusters: "))
-N_CLUSTERS = 5
+N_CLUSTERS = int(input("Enter number of clusters: "))
+
 
 os.makedirs("artifacts", exist_ok=True)
 os.makedirs("outputs/task_2", exist_ok=True)
@@ -273,6 +272,10 @@ def random_search_dbscan_params(
         #         )
 
     return best_eps, best_min_samples
+
+
+
+from sklearn.metrics import silhouette_score
 
 
 def calculate_best_params(
@@ -711,7 +714,7 @@ def predict_label(
     # find the most common label
     label_counts = Counter(top_10_labels)
     predicted_label = label_counts.most_common(1)[0][0]
-    print(predicted_label)
+
 
     # predicted_label = None
     # all_distances = []

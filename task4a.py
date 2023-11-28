@@ -57,8 +57,8 @@ class MultiLayerLSH:
         return self.projection_vectors
 
     def length(self):
-        for layer in range(num_layers):
-            for i in range(num_random_vectors):
+        for layer in range(self.num_layers):
+            for i in range(self.num_random_vectors):
                 proj = self.projection_vectors[layer, i, :]
                 # print(np.linalg.norm(proj)/ num_segments)
 
@@ -151,7 +151,7 @@ def main():
         # Serialize and save the object to a file
         # print("Max", lsh.max1)
         # print("Min1", lsh.min1)
-        with open("./output/lsh.pkl", "wb") as file:
+        with open("./outputs/lsh.pkl", "wb") as file:
             pickle.dump(lsh, file)
 
 
