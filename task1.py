@@ -27,6 +27,7 @@ Questions:
 
 1. Do you want the output to be csv or print it on terminal?
 """
+
 from collections import Counter
 import numpy as np
 import os
@@ -111,6 +112,7 @@ extractor = FeatureExtractor()
 K = input("Enter the number of latent dimensions (K. Default is 5): ")
 K = 5 if K == "" else int(K)
 
+
 if os.path.exists("artifacts/resnet50_avgpool_features.pkl"):
     features = torch.load("artifacts/resnet50_avgpool_features.pkl")
     labels = torch.load("artifacts/labels.pkl")
@@ -137,6 +139,7 @@ else:
     torch.save(features, "artifacts/resnet50_avgpool_features.pkl")
     torch.save(labels, "artifacts/labels.pkl")
     torch.save(image_ids, "artifacts/image_ids.pkl")
+
 
 IMG_LATENT_FEAT_MAP_PATH = f"artifacts/task_1_new_img_latent_feat_map_K_{K}.pkl"
 IMG_LATENT_FEAT_COMPONENTS_PATH = (
