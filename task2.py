@@ -24,6 +24,7 @@ from tqdm import tqdm
 
 N_CLUSTERS = int(input("Enter number of clusters: "))
 
+
 os.makedirs("artifacts", exist_ok=True)
 os.makedirs("outputs/task_2", exist_ok=True)
 os.makedirs("outputs/task_2_mds_space", exist_ok=True)
@@ -271,6 +272,7 @@ def random_search_dbscan_params(
         #         )
 
     return best_eps, best_min_samples
+
 
 
 from sklearn.metrics import silhouette_score
@@ -712,6 +714,7 @@ def predict_label(
     # find the most common label
     label_counts = Counter(top_10_labels)
     predicted_label = label_counts.most_common(1)[0][0]
+
 
     # predicted_label = None
     # all_distances = []
