@@ -25,7 +25,9 @@ feat_db, idx_dict, similarity_metric = (
     _tmp[config.IDX],
     _tmp[config.SIMILARITY_METRIC],
 )
-
+print("loading caltech101 dataset ...")
+DATA_DIR = "./data/caltech101"
+dataset = torchvision.datasets.Caltech101(DATA_DIR, download=True)
 
 def l2_distance(vector1, vector2):
     return np.linalg.norm(vector1 - vector2, ord=2)
@@ -56,7 +58,7 @@ def find_k_nearest(new_image_vector, loaded_lsh, k=5):
     # Select the top k image IDs
     top_k_image_ids = [image_id for image_id, _ in distances[:k]]
 
-    return top_k_image_ids, len(all_images), len(unique_images)
+    return top_k_image_ids, len(all_images), unique_images
 
 
 # Function to display images based on their IDs in a grid
@@ -111,63 +113,67 @@ def display_images(query_image, top_k_images):
 
     plt.show()
 
+def main():
 
-# Create an ArgumentParser
-parser = argparse.ArgumentParser(description="Store hash.")
+    # Create an ArgumentParser
+    parser = argparse.ArgumentParser(description="Store hash.")
 
-# Define command-line arguments
-parser.add_argument("knn", type=str, help="K for Knn")
-parser.add_argument("img_id", type=str, help="Query image id")
+    # Define command-line arguments
+    parser.add_argument("knn", type=str, help="K for Knn")
+    parser.add_argument("img_id", type=str, help="Query image id")
 
-# Parse the arguments
-args = parser.parse_args()
-knn = int(args.knn)
-query_image = int(args.img_id)
+    # Parse the arguments
+    args = parser.parse_args()
+    knn = int(args.knn)
+    query_image = int(args.img_id)
 
-print("loading caltech101 dataset ...")
-DATA_DIR = "./data/caltech101"
-dataset = torchvision.datasets.Caltech101(DATA_DIR, download=True)
+    
 
-with open("./outputs/lsh.pkl", "rb") as file:
-    loaded_lsh = pickle.load(file)
+    with open("./outputs/lsh.pkl", "rb") as file:
+        loaded_lsh = pickle.load(file)
 
-if(query_image==-1): 
-    image_path = input("Enter the path to the image: ")
-    try:
-        # Open the image using PIL
-        with open(image_path, 'rb') as file:
-            pil_image = Image.open(io.BytesIO(file.read()))
-
-
-        # Display some information about the image
-        print(f"Image format: {pil_image.format}")
-        print(f"Image mode: {pil_image.mode}")
-        print(f"Image size: {pil_image.size}")
-
-        image =  pil_image
-
-    except Exception as e:
-        print(f"Error: {e}")
-        
-
-else: 
-    image,_ = dataset[query_image]
-if image.mode != "RGB": image = image.convert('RGB')
-image_vector = feature_descriptor.extract_features(image, 'resnet_fc')
+    if(query_image==-1): 
+        image_path = input("Enter the path to the image: ")
+        try:
+            # Open the image using PIL
+            with open(image_path, 'rb') as file:
+                pil_image = Image.open(io.BytesIO(file.read()))
 
 
+            # Display some information about the image
+            print(f"Image format: {pil_image.format}")
+            print(f"Image mode: {pil_image.mode}")
+            print(f"Image size: {pil_image.size}")
 
-k_near_images, total_images, unique_images = find_k_nearest(
-    image_vector, loaded_lsh, knn
-)
+            image =  pil_image
+
+        except Exception as e:
+            print(f"Error: {e}")
+            
+
+    else: 
+        image,_ = dataset[query_image]
+    if image.mode != "RGB": image = image.convert('RGB')
+    image_vector = feature_descriptor.extract_features(image, 'resnet_fc')
 
 
-# Example: Display images with IDs 0, 1, and 2
-# display_images_grid(near_images, dataset)
-print("Total Images: ", total_images)
-print("Unique Images: ", unique_images)
-if(len(k_near_images)==0): 
-    print("No near image found using LSH")   
-else:
-    display_images(image,k_near_images)
+
+    k_near_images, total_images, unique_images = find_k_nearest(
+        image_vector, loaded_lsh, knn
+    )
+
+
+    # Example: Display images with IDs 0, 1, and 2
+    # display_images_grid(near_images, dataset)
+    print("Total Images: ", total_images)
+    print("Unique Images: ", len(unique_images))
+    if(len(k_near_images)==0): 
+        print("No near image found using LSH")   
+    else:
+        display_images(image,k_near_images)
+
+
+if __name__ == "__main__":
+    main()
+
 

@@ -63,7 +63,12 @@ def get_user_input(inp: str, len_ds: int=0, max_label_val: int=0) -> Dict[str, U
       elif x == 'K_latent':
         ret[x] = int(input('Input K for latent space: '))
         if ret[x] == 0: raise ValueError(f'K needs to be greater than 0. Given: {ret[x]}')
-
+      elif x == 'topK':
+        ret[x] = int(input(f'Enter a K value for selecting top K images: '))
+      elif x == 'regime':
+        ret[x] = int(input(f'Enter a regime for processing relevance feedback. Enter 1 for SVM and 2 for Probabilistic feedback model: '))
+      elif x == 'query_image_id':
+        ret[x] = int(input(f'Enter a query image id: '))
       elif x == 'img_id':
         is_img_fn = input('Do you want to enter image filename? (y/N): ').lower()
         if is_img_fn == 'y':
