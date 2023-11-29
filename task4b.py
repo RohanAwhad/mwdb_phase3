@@ -1,4 +1,3 @@
-
 import os
 import torchvision
 import torch
@@ -11,17 +10,21 @@ from collections import defaultdict
 import matplotlib.pyplot as plt
 import math
 import config
-import helper
 import argparse
+
 
 from feature_descriptor import FeatureDescriptor
 feature_descriptor = FeatureDescriptor(net=config.RESNET_MODEL)
 from task4a import MultiLayerLSH
 _tmp = config.FEAT_DESC_FUNCS['resnet_fc']
 feat_db, idx_dict, similarity_metric = _tmp[config.FEAT_DB], _tmp[config.IDX], _tmp[config.SIMILARITY_METRIC]
+print('loading caltech101 dataset ...')
+DATA_DIR = './data/caltech101'
+dataset = torchvision.datasets.Caltech101(DATA_DIR, download=True)
 
 def l2_distance(vector1, vector2):
     return np.linalg.norm(vector1 - vector2, ord=2)
+
 def find_k_nearest(new_image_vector, loaded_lsh, k=5):
         # Compute hash values for the new image
         new_hash = loaded_lsh.compute_hash(new_image_vector)
@@ -29,6 +32,7 @@ def find_k_nearest(new_image_vector, loaded_lsh, k=5):
         # Track distances and corresponding images
         distances = []
         all_images = []
+        
         for layer, hash_layer in enumerate(new_hash):
             # Calculate L2 distance between new hash and stored hash
             all_images += loaded_lsh.hash_values[(layer,tuple(hash_layer))]
@@ -42,7 +46,7 @@ def find_k_nearest(new_image_vector, loaded_lsh, k=5):
         # Select the top k image IDs
         top_k_image_ids = [image_id for image_id, _ in distances[:k]]
 
-        return top_k_image_ids,len(all_images), len(unique_images)
+        return top_k_image_ids,len(all_images), unique_images
 
 
 # Function to display images based on their IDs in a grid
@@ -79,7 +83,10 @@ def display_images(query_image_id, top_k_images):
     axes[0].imshow(query_image)
     axes[0].set_title("Query Image")
     axes[0].axis('off')
-
+    try:
+        os.makedirs('./Outputs/task4b_outputs/')
+    except FileExistsError:
+        print(f"Folder path already exists: {'./Outputs/task4b_outputs/'}")
     # Display the top k images
     for i, image_id in enumerate(top_k_images, start=1):
         image, _ = dataset[image_id]
@@ -88,41 +95,41 @@ def display_images(query_image_id, top_k_images):
         axes[i].imshow(image)
         axes[i].set_title(f"Top {i} Image")
         axes[i].axis('off')
+        image.save('./Outputs/task4b_outputs/'+str(image_id)+'.jpg')
 
     plt.show()
 
-# Create an ArgumentParser
-parser = argparse.ArgumentParser(description='Store hash.')
+def main():
+    # Create an ArgumentParser
+    parser = argparse.ArgumentParser(description='Store hash.')
 
-# Define command-line arguments
-parser.add_argument('knn', type=str, help='K for Knn')
-parser.add_argument('img_id', type=str, help='Query image id')
+    # Define command-line arguments
+    parser.add_argument('knn', type=str, help='K for Knn')
+    parser.add_argument('img_id', type=str, help='Query image id')
 
-# Parse the arguments
-args = parser.parse_args()
-num_layers = int(args.knn)
-query_image = int(args.img_id)
+    # Parse the arguments
+    args = parser.parse_args()
+    num_layers = int(args.knn)
+    query_image = int(args.img_id)
 
-print('loading caltech101 dataset ...')
-DATA_DIR = './data/caltech101'
-dataset = torchvision.datasets.Caltech101(DATA_DIR, download=True)
+    
 
-with open('./output/lsh.pkl', 'rb') as file:
-    loaded_lsh = pickle.load(file)
-
-
-image,_ = dataset[query_image]
-if image.mode != "RGB": image = image.convert('RGB')
-image_vector = feature_descriptor.extract_features(image, 'resnet_fc')
+    with open('./output/lsh.pkl', 'rb') as file:
+        loaded_lsh = pickle.load(file)
 
 
-k_near_images,total_images,unique_images = find_k_nearest(image_vector,loaded_lsh)
+    image,_ = dataset[query_image]
+    print(type(image))
+    if image.mode != "RGB": image = image.convert('RGB')
+    image_vector = feature_descriptor.extract_features(image, 'resnet_fc')
 
+    k_near_images,total_images,unique_images = find_k_nearest(image_vector,loaded_lsh, num_layers)
 
+    # Example: Display images with IDs 0, 1, and 2
+    # display_images_grid(near_images, dataset)
+    print("Total Images: ", total_images)
+    print("Unique Images: ", len(unique_images))
+    display_images(query_image,k_near_images)
 
-# Example: Display images with IDs 0, 1, and 2
-# display_images_grid(near_images, dataset)
-print("Total Images: ", total_images)
-print("Unique Images: ", unique_images)
-display_images(query_image,k_near_images)
-
+if __name__ == '__main__':
+    main()
