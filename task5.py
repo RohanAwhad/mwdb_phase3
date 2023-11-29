@@ -25,7 +25,8 @@ def l2_distance(vector1, vector2):
     return np.linalg.norm(vector1 - vector2, ord=2)
 
 def process_feedback_using_probabilities(feedback_list, k_val, k_near_images, threshold_percent=5):
-    pass
+    
+    print(feedback_list)
 
     R = sum(1 for d in feedback_list if 'R' == d['feedback'])
     RPlus = sum(1 for d in feedback_list if 'R+' == d['feedback'])
