@@ -1,8 +1,8 @@
 .DS_Store
 models
 data
-artifacts
+artifacts*
 output
-outputs
+outputs*
 *.swp
 __pycache__
