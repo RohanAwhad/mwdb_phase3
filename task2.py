@@ -23,11 +23,14 @@ from torchvision.transforms import functional as TF
 from tqdm import tqdm
 
 N_CLUSTERS = int(input("Enter number of clusters: "))
-K = 512
+K = 1024
+VERSION = 6
+ARTIFACTS_DIR = f"artifacts_{VERSION}"
+OUTPUTS_DIR = f"outputs_{VERSION}"
 
-os.makedirs("artifacts", exist_ok=True)
-os.makedirs("outputs/task_2", exist_ok=True)
-os.makedirs(f"outputs/task_2_svd_{K}_space_C_{N_CLUSTERS}", exist_ok=True)
+os.makedirs(ARTIFACTS_DIR, exist_ok=True)
+os.makedirs(f"{OUTPUTS_DIR}/task_2", exist_ok=True)
+os.makedirs(f"{OUTPUTS_DIR}/task_2_svd_{K}_space_C_{N_CLUSTERS}", exist_ok=True)
 
 TORCH_HUB = "./models/"
 torch.set_grad_enabled(False)
@@ -40,16 +43,16 @@ MODEL_NAME = "ResNet50_Weights.DEFAULT"
 RESNET_MODEL = torchvision.models.resnet50(weights=MODEL_NAME).eval()
 
 LABEL_TO_CLUSTER_CENTROIDS_PATH = (
-    f"artifacts/label_to_cluster_centroids_C_{N_CLUSTERS}_svd_{K}.pkl"
+    f"{ARTIFACTS_DIR}/label_to_cluster_centroids_C_{N_CLUSTERS}_svd_{K}.pkl"
 )
-LATENT_FEAT_PATH = "artifacts/resnet50_avgpool_features_svd_{K}.pkl"
-LABEL_TO_MDS_PATH = f"artifacts/label_to_mds_C_{N_CLUSTERS}_svd_{K}.pkl"
+LATENT_FEAT_PATH = f"{ARTIFACTS_DIR}/resnet50_avgpool_features_svd_{K}.pkl"
+LABEL_TO_MDS_PATH = f"{ARTIFACTS_DIR}/label_to_mds_C_{N_CLUSTERS}_svd_{K}.pkl"
 LABEL_TO_DBSCAN_PARAMS_PATH = (
-    f"artifacts/label_to_dbscan_params_grid_search_C_{N_CLUSTERS}_svd_{K}.pkl"
+    f"{ARTIFACTS_DIR}/label_to_dbscan_params_grid_search_C_{N_CLUSTERS}_svd_{K}.pkl"
 )
-LABEL_TO_CLUSTERS_PATH = f"artifacts/label_to_clusters_C_{N_CLUSTERS}_svd_{K}.pkl"
-ODD_IMG_FEAT_PATH = f"artifacts/odd_img_features_svd_{K}.pkl"
-ODD_IMG_LABELS_PATH = "artifacts/odd_image_labels.pkl"
+LABEL_TO_CLUSTERS_PATH = f"{ARTIFACTS_DIR}/label_to_clusters_C_{N_CLUSTERS}_svd_{K}.pkl"
+ODD_IMG_FEAT_PATH = f"{ARTIFACTS_DIR}/odd_img_features_svd_{K}.pkl"
+ODD_IMG_LABELS_PATH = f"{ARTIFACTS_DIR}/odd_image_labels.pkl"
 
 
 class SaveOutput:
@@ -110,7 +113,7 @@ class SVD:
 
 
 extractor = FeatureExtractor()
-svd = SVD()
+# svd = SVD()
 
 if os.path.exists("artifacts/resnet50_avgpool_features.pkl"):
     features = torch.load("artifacts/resnet50_avgpool_features.pkl")
@@ -139,11 +142,11 @@ else:
     torch.save(labels, "artifacts/labels.pkl")
     torch.save(image_ids, "artifacts/image_ids.pkl")
 
-if os.path.exists(LATENT_FEAT_PATH):
-    features, svd = torch.load(LATENT_FEAT_PATH)
-else:
-    features = svd.fit_transform(features, K=K)
-    torch.save((features, svd), LATENT_FEAT_PATH)
+# if os.path.exists(LATENT_FEAT_PATH):
+#     features, svd = torch.load(LATENT_FEAT_PATH)
+# else:
+#     features = svd.fit_transform(features, K=K)
+#     torch.save((features, svd), LATENT_FEAT_PATH)
 
 label_to_feat_idx = defaultdict(list)
 for idx, label in enumerate(labels):
@@ -231,6 +234,62 @@ def dbscan(X, eps, min_samples):
     return labels
 
 
+def find_dbscan_params(
+    X,
+    initial_eps,
+    initial_min_samples,
+    target_clusters,
+    tolerance=1,
+    eps_step=0.05,
+    min_samples_step=1,
+    max_iterations=100,
+):
+    """
+    Adjust DBSCAN parameters to reach the target number of clusters within a tolerance.
+
+    Parameters:
+    X (array-like): The input data for clustering.
+    initial_eps (float): Initial epsilon value for DBSCAN.
+    initial_min_samples (int): Initial min_samples value for DBSCAN.
+    target_clusters (int): Target number of clusters.
+    tolerance (int): Tolerance for the number of clusters.
+    eps_step (float): Step size for adjusting epsilon.
+    min_samples_step (int): Step size for adjusting min_samples.
+    max_iterations (int): Maximum number of iterations for adjustment.
+
+    Returns:
+    tuple: (best_eps, best_min_samples) after adjustment.
+    """
+    eps = initial_eps
+    min_samples = initial_min_samples
+    iteration = 0
+    update_eps_flag = True
+
+    while iteration < max_iterations:
+        labels = dbscan(X, eps=eps, min_samples=min_samples)
+        n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
+
+        if target_clusters - tolerance <= n_clusters <= target_clusters + tolerance:
+            return eps, min_samples
+
+        if n_clusters < target_clusters:
+            if update_eps_flag:
+                eps -= eps_step
+                eps = max(eps, 0.01)  # Prevent eps from becoming non-positive
+            else:
+                min_samples = max(1, min_samples - min_samples_step)
+        else:
+            if update_eps_flag:
+                eps += eps_step
+            else:
+                min_samples += min_samples_step
+
+        update_eps_flag = not update_eps_flag  # Toggle the flag
+        iteration += 1
+
+    return eps, min_samples
+
+
 def random_search_dbscan_params(
     X, target_clusters, iterations=100, eps_range=(0.1, 1.0), min_samples_range=(2, 10)
 ):
@@ -261,6 +320,7 @@ def random_search_dbscan_params(
     best_diff = float("inf")
     best_noise = float("inf")
     best_score = float("-inf")
+    best_num_clusters = 0
 
     for _ in range(iterations):
         eps = random.uniform(*eps_range)
@@ -268,7 +328,13 @@ def random_search_dbscan_params(
 
         labels = dbscan(X, eps=eps, min_samples=min_samples)
         num_clusters = len(set(labels)) - (1 if -1 in labels else 0)
-        best_eps, best_min_samples, best_score, best_diff = calculate_best_params(
+        (
+            best_eps,
+            best_min_samples,
+            best_score,
+            best_diff,
+            best_num_clusters,
+        ) = calculate_best_params(
             X,
             labels,
             num_clusters,
@@ -279,6 +345,7 @@ def random_search_dbscan_params(
             best_min_samples,
             best_score,
             best_diff,
+            best_num_clusters,
         )
         # get count of -1 labels
         num_noise = np.sum(labels == -1)
@@ -314,10 +381,185 @@ def random_search_dbscan_params(
         #             num_noise,
         #         )
 
+    print(
+        f"the selected params have a silhouette score of {best_score}, and num_clusters: {best_num_clusters}"
+    )
     return best_eps, best_min_samples
 
 
+from sklearn.metrics.pairwise import euclidean_distances
+
+
+def dunn_index(X, labels):
+    """
+    Compute the Dunn Index for a given set of points and cluster labels.
+
+    Parameters:
+    X (array-like): The input data points.
+    labels (array-like): The cluster labels for each point in X.
+
+    Returns:
+    float: The Dunn Index.
+    """
+    unique_clusters = np.unique(labels)
+    if len(unique_clusters) == 1:
+        return np.inf  # Only one cluster exists
+
+    # Compute intra-cluster distances (maximum distance within each cluster)
+    intra_cluster_dists = np.array(
+        [np.max(euclidean_distances(X[labels == k])) for k in unique_clusters]
+    )
+
+    # Compute inter-cluster distances (minimum distance between clusters)
+    inter_cluster_dists = np.inf
+    for i in range(len(unique_clusters)):
+        for j in range(i + 1, len(unique_clusters)):
+            dist = np.min(
+                euclidean_distances(
+                    X[labels == unique_clusters[i]], X[labels == unique_clusters[j]]
+                )
+            )
+            if dist < inter_cluster_dists:
+                inter_cluster_dists = dist
+
+    return inter_cluster_dists / np.max(intra_cluster_dists)
+
+
+from sklearn.metrics import davies_bouldin_score
+
+
+def compute_davies_bouldin_index(X, labels):
+    """
+    Compute the Davies-Bouldin Index for a given set of points and a DBSCAN model.
+
+    Parameters:
+    X (array-like): The input data points.
+
+    Returns:
+    float: The Davies-Bouldin Index.
+    """
+    # Handling the case of a single cluster or no clusters
+    if len(np.unique(labels)) < 2:
+        return np.inf
+
+    return -1 * davies_bouldin_score(X, labels)
+
+
 from sklearn.metrics import silhouette_score
+
+
+def silhouette_score_(X, labels):
+    """
+    Compute the silhouette score for each sample of X given the cluster labels.
+
+    Parameters:
+    X (array-like): NumPy array of data points.
+    labels (array-like): Cluster labels for each point in X.
+
+    Returns:
+    float: The mean silhouette score for all samples.
+    """
+    unique_labels = np.unique(labels)
+    if len(unique_labels) == 1:
+        # Silhouette score is not well-defined for a single cluster or if each data point is its own cluster
+        raise ValueError("Silhouette score is not defined for a single cluster.")
+
+    # Calculate pairwise distances
+    dist_matrix = np.sqrt(np.sum((X[:, np.newaxis] - X[np.newaxis, :]) ** 2, axis=2))
+
+    # Calculate a(i)
+    a_vals = np.array(
+        [
+            np.mean(
+                [
+                    dist_matrix[i, j]
+                    for j in range(len(X))
+                    if labels[i] == labels[j] and i != j
+                ]
+            )
+            for i in range(len(X))
+        ]
+    )
+
+    # Calculate b(i)
+    b_vals = np.array(
+        [
+            np.min(
+                [
+                    np.mean(dist_matrix[i, labels == label])
+                    for label in unique_labels
+                    if label != labels[i]
+                ]
+            )
+            for i in range(len(X))
+        ]
+    )
+
+    # Calculate silhouette values
+    s_vals = (b_vals - a_vals) / np.maximum(a_vals, b_vals)
+
+    # Return the mean silhouette score
+    return np.mean(s_vals)
+
+
+# def calculate_best_params(
+#     X,
+#     labels,
+#     num_clusters,
+#     target_clusters,
+#     eps,
+#     min_samples,
+#     best_eps,
+#     best_min_samples,
+#     best_score,
+#     best_diff,
+#     best_num_clusters,
+# ):
+#     # print(f"best_score: {best_score}")
+#     if best_eps is None and best_min_samples is None:
+#         return eps, min_samples, best_score, best_diff, num_clusters
+#     # Adjust if the number of clusters is less than the target, ignore this run
+#     diff = abs(num_clusters - target_clusters)
+#     print(f"diff: {diff}")
+
+#     if num_clusters < target_clusters and best_num_clusters >= num_clusters:
+#         return best_eps, best_min_samples, best_score, best_diff, best_num_clusters
+
+#     # Prefer solutions that meet or exceed the target number of clusters
+#     if num_clusters >= target_clusters:
+#         if diff < best_diff or (diff == best_diff and num_clusters > target_clusters):
+#             best_eps, best_min_samples, best_diff, best_num_clusters = (
+#                 eps,
+#                 min_samples,
+#                 diff,
+#                 num_clusters,
+#             )
+
+#         if num_clusters > 1:  # Silhouette score is only valid if num_clusters > 1
+#             try:
+#                 score = silhouette_score(X, labels)
+#             except ValueError:
+#                 return (
+#                     best_eps,
+#                     best_min_samples,
+#                     best_score,
+#                     best_diff,
+#                     best_num_clusters,
+#                 )
+
+#             # Prefer higher silhouette score among those that meet or exceed target clusters
+#             if num_clusters >= target_clusters and (
+#                 diff < best_diff or (diff == best_diff and score > best_score)
+#             ):
+#                 best_eps, best_min_samples, best_score, best_diff, best_num_clusters = (
+#                     eps,
+#                     min_samples,
+#                     score,
+#                     diff,
+#                     num_clusters,
+#                 )
+
+#     return best_eps, best_min_samples, best_score, best_diff, best_num_clusters
 
 
 def calculate_best_params(
@@ -333,51 +575,29 @@ def calculate_best_params(
     best_diff,
     best_num_clusters,
 ):
-    # print(f"best_score: {best_score}")
-    if best_eps is None and best_min_samples is None:
-        return eps, min_samples, best_score, best_diff, num_clusters
-    # Adjust if the number of clusters is less than the target, ignore this run
-    diff = abs(num_clusters - target_clusters)
-    print(f"diff: {diff}")
-
-    if num_clusters < target_clusters and best_num_clusters >= num_clusters:
-        return best_eps, best_min_samples, best_score, best_diff, best_num_clusters
-
-    # Prefer solutions that meet or exceed the target number of clusters
-    if num_clusters >= target_clusters:
-        if diff < best_diff or (diff == best_diff and num_clusters > target_clusters):
-            best_eps, best_min_samples, best_diff, best_num_clusters = (
-                eps,
-                min_samples,
-                diff,
-                num_clusters,
-            )
-
-        if num_clusters > 1:  # Silhouette score is only valid if num_clusters > 1
-            try:
-                score = silhouette_score(X, labels)
-            except ValueError:
+    # only calculate silhouette score if num_clusters > 1
+    if num_clusters > 1:
+        try:
+            score = silhouette_score(X, labels)
+            # score = dunn_index(X, labels)
+            # score = -1 * davies_bouldin_score(X, labels)
+            if score > best_score:
                 return (
-                    best_eps,
-                    best_min_samples,
-                    best_score,
-                    best_diff,
-                    best_num_clusters,
-                )
-
-            # Prefer higher silhouette score among those that meet or exceed target clusters
-            if num_clusters >= target_clusters and (
-                diff < best_diff or (diff == best_diff and score > best_score)
-            ):
-                best_eps, best_min_samples, best_score, best_diff, best_num_clusters = (
                     eps,
                     min_samples,
                     score,
-                    diff,
+                    best_diff,
                     num_clusters,
                 )
-
-    return best_eps, best_min_samples, best_score, best_diff, best_num_clusters
+        except ValueError:
+            pass
+    return (
+        best_eps,
+        best_min_samples,
+        best_score,
+        best_diff,
+        best_num_clusters,
+    )
 
 
 def grid_search_dbscan_params(
@@ -415,7 +635,7 @@ def grid_search_dbscan_params(
     )
 
     # Call the function inside the loop
-    for eps in eps_values:
+    for eps in tqdm(eps_values, desc="Grid Search", leave=False):
         for min_samples in min_samples_values:
             labels = dbscan(X, eps=eps, min_samples=min_samples)
             num_clusters = len(set(labels)) - (1 if -1 in labels else 0)
@@ -472,7 +692,7 @@ def grid_search_dbscan_params(
             #         )
 
     print(
-        f"the selected params have a silhouette score of {best_score}, and num_clusters: {best_num_clusters}"
+        f"the selected params have a cluster score of {best_score}, and num_clusters: {best_num_clusters}"
     )
     return best_eps, best_min_samples
 
@@ -511,25 +731,25 @@ class MDS:
         return new_point
 
 
-if os.path.exists(LABEL_TO_MDS_PATH):
-    with open(LABEL_TO_MDS_PATH, "rb") as f:
-        label_to_mds = pickle.load(f)
-else:
-    label_to_mds = {}
-    for label, indices in tqdm(label_to_feat_idx.items()):
-        _tmp = z_normalized_features[indices]
+# if os.path.exists(LABEL_TO_MDS_PATH):
+#     with open(LABEL_TO_MDS_PATH, "rb") as f:
+#         label_to_mds = pickle.load(f)
+# else:
+#     label_to_mds = {}
+#     for label, indices in tqdm(label_to_feat_idx.items()):
+#         _tmp = z_normalized_features[indices]
 
-        # find distance matrix
-        distance_matrix = np.linalg.norm(_tmp[:, np.newaxis] - _tmp, axis=2)
+#         # find distance matrix
+#         distance_matrix = np.linalg.norm(_tmp[:, np.newaxis] - _tmp, axis=2)
 
-        # find coordinates
-        mds_obj = MDS(distance_matrix)
-        new_feats = mds_obj.fit_transform()
-        label_to_mds[label] = (new_feats, mds_obj)
+#         # find coordinates
+#         mds_obj = MDS(distance_matrix)
+#         new_feats = mds_obj.fit_transform()
+#         label_to_mds[label] = (new_feats, mds_obj)
 
-    # save label_to_mds
-    with open(LABEL_TO_MDS_PATH, "wb") as f:
-        pickle.dump(label_to_mds, f)
+#     # save label_to_mds
+#     with open(LABEL_TO_MDS_PATH, "wb") as f:
+#         pickle.dump(label_to_mds, f)
 
 
 # label_to_features
@@ -560,7 +780,7 @@ else:
         # eps_range = np.percentile(distance_matrix, [25, 75])
         print(f"eps_range: {eps_range}")
 
-        min_samples_range = (1, 30)
+        min_samples_range = (1, 20)
         iterations = 500
 
         # find eps and min_samples
@@ -580,6 +800,19 @@ else:
                 min_samples_range=min_samples_range,
                 iterations=iterations,
             )
+
+        # further refine eps and min_samples for target_clusters
+        eps, min_samples = find_dbscan_params(
+            _tmp,
+            initial_eps=eps,
+            initial_min_samples=min_samples,
+            target_clusters=N_CLUSTERS,
+            tolerance=1,
+            eps_step=0.1,
+            min_samples_step=1,
+            max_iterations=200,
+        )
+
         label_to_dbscan_params[label] = (eps, min_samples, N_CLUSTERS)
 
     # save label_to_dbscan_params
@@ -593,7 +826,7 @@ if os.path.exists(LABEL_TO_CLUSTERS_PATH):
 else:
     label_to_clusters = {}
     for label, indices in tqdm(label_to_feat_idx.items()):
-        _tmp = label_to_mds[label][0]
+        _tmp = label_to_features[label]
         eps, min_samples, _ = label_to_dbscan_params[label]
         labels = dbscan(_tmp, eps=eps, min_samples=min_samples)
         label_to_clusters[label] = labels
@@ -632,9 +865,7 @@ for label, indices in tqdm(
     distance_matrix = np.linalg.norm(_tmp[:, np.newaxis] - _tmp, axis=2)
     coordinates = mds(distance_matrix)
     # check if the image is already saved
-    img_fn = (
-        f"outputs/task_2_svd_{K}_space_C_{N_CLUSTERS}/task2_label_{label}_clusters.png"
-    )
+    img_fn = f"{OUTPUTS_DIR}/task_2_svd_{K}_space_C_{N_CLUSTERS}/task2_label_{label}_clusters.png"
     if os.path.exists(img_fn):
         continue
     cluster_labels = label_to_clusters[label]
@@ -663,9 +894,7 @@ for label, indices in tqdm(
 ):
     indices = np.array(indices)
     # check if the image is already saved
-    img_fn = (
-        f"outputs/task_2_svd_{K}_space_C_{N_CLUSTERS}/task2_label_{label}_images.png"
-    )
+    img_fn = f"{OUTPUTS_DIR}/task_2_svd_{K}_space_C_{N_CLUSTERS}/task2_label_{label}_images.png"
     if os.path.exists(img_fn):
         continue
     cluster_labels = label_to_clusters[label]
@@ -714,7 +943,7 @@ else:
         if image.mode != "RGB":
             image = image.convert("RGB")
         feature = extractor(image)
-        feature = svd.transform(feature)
+        # feature = svd.transform(feature)
         odd_image_features.append(feature.squeeze())
         trues.append(label)
 
@@ -947,7 +1176,7 @@ precision = tp / (tp + fp)
 accuracy = tp / len(preds)
 
 
-with open(f"outputs/task2_C_{N_CLUSTERS}.csv", "w") as f:
+with open(f"{OUTPUTS_DIR}/task2_C_{N_CLUSTERS}.csv", "w") as f:
     f.write("label,precision,recall,f1_score\n")
     for label, metrics in per_label_metrics.items():
         f.write(
